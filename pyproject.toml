@@ -1,0 +1,14 @@
+[tool.isort]
+profile = "black"
+skip_glob = ["migrations/*", "github/*", ".pytest_cache/*", "venv/*"]
+
+[tool.black]
+include = '\.pyi?$'
+exclude = '''
+/(
+    migrations
+ |  github
+ |  .pytest_cache
+ |  venv
+)/
+'''

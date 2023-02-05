@@ -1,0 +1,54 @@
+{% extends 'base_panel.html' %}
+{% block content %}
+<!-- Begin Page Content -->
+<div class="container-fluid">
+
+    <!-- Page Heading -->
+    <h1 class="h3 mb-1 text-gray-800">Добавить бота: Telegram</h1>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <br>
+        {% for category, message in messages %}
+            <div class="alert alert-{{ category }}" role="alert">
+                <center>{{ message }}</center>
+            </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+    {% if form.errors %}
+        <br>
+        {% for field, errors in form.errors.items() %}
+            {% for error in errors %}
+            <div class="alert alert-danger" role="alert">
+                <center>{{ field }}: {{ error }}</center>
+            </div>
+            {% endfor %}
+        {% endfor %}
+    {% endif %}
+    <div class="card-body p-0">
+        <!-- Nested Row within Card Body -->
+        <div class="row">
+            <div class="col-lg-6">
+                <div class="p-5">
+                   <form method="POST" action="/panel/bots/new/" enctype=multipart/form-data>
+                    <div class="mb-3">
+                        <label for="exampleFormControlInput1">Имя бота</label>
+                        <input class="form-control" id="exampleFormControlInput1" name="bot_name">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="exampleFormControlInput2">Ключ бота (Пример: 5311630810:AAHuzUOGtezAG-HBuSLaUNTrpzgadZf3YgZ)</label>
+                        <input class="form-control" id="exampleFormControlInput2" name="bot_key">
+                    </div>
+                       <br>
+                    <div class="mb-3"><button class="btn btn-primary" type="submit">Сохранить</button></div>
+                </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+<!-- /.container-fluid -->
+{% endblock %}

@@ -1,0 +1,10 @@
+Flask==2.2.2
+psycopg2==2.9.5
+Flask-Login==0.6.2
+twitchAPI==3.7.0
+psycopg2==2.9.5
+isort==5.12.0
+black==23.1.0
+bcrypt==4.0.1
+alembic==1.9.2
+python-dotenv==0.21.1
