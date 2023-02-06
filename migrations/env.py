@@ -27,6 +27,7 @@ target_metadata = Base.metadata
 from models.user import *
 from models.connectors import *
 from models.bots import *
+from models.webhooks import *
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:

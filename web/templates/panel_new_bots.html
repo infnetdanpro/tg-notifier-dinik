@@ -34,12 +34,15 @@
                    <form method="POST" action="/panel/bots/new/" enctype=multipart/form-data>
                     <div class="mb-3">
                         <label for="exampleFormControlInput1">Имя бота</label>
-                        <input class="form-control" id="exampleFormControlInput1" name="bot_name">
+                        {{ form.bot_name }}
                     </div>
-
                     <div class="mb-3">
                         <label for="exampleFormControlInput2">Ключ бота (Пример: 5311630810:AAHuzUOGtezAG-HBuSLaUNTrpzgadZf3YgZ)</label>
-                        <input class="form-control" id="exampleFormControlInput2" name="bot_key">
+                        {{ form.bot_key }}
+                    </div>
+                    <div class="mb-3">
+                        <label for="exampleFormControlInput3">Список каналов (Пример: -1001499434368,-1022827366251)</label>
+                        {{ form.bot_channels }}
                     </div>
                        <br>
                     <div class="mb-3"><button class="btn btn-primary" type="submit">Сохранить</button></div>

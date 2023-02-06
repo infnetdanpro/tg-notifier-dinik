@@ -34,28 +34,36 @@
                    <form method="POST" action="/panel/twitch/edit/{{ source.id }}/" enctype="multipart/form-data">
                     <div class="mb-3">
                         <label for="exampleFormControlInput1">Имя канала</label>
-                        <input class="form-control" id="exampleFormControlInput1" name="twitch_channel_name" value="{{ source.twitch_channel_name }}">
+                        {{ form.twitch_channel_name }}
                     </div>
                     <div class="mb-3">
-                        <label for="exampleFormControlSelect1">Выберите действие</label>
+                        <label for="controlUsername">Ваш username: {{ username }}</label>
+                        {{ form.twitch_username }}
+                    </div>
+                    <div class="mb-3">
+                        <label for="controlLink">Ссылка на twitch-канал: {{ username }}</label>
+                        {{ form.twitch_link }}
+                    </div>
+                    <div class="mb-3">
+                        <label for="exampleFormControlSelect1">Выберите cобытие</label>
                         {{ form.twitch_action }}
                     </div>
                     <div class="mb-3">
-                        <label for="exampleFormControlSelect2">Выберите бота</label>
+                        <label>Выберите бота</label>
                        {{ form.bot }}
                     </div>
-                    <div class="mb-0">
+                    <div class="mb-3">
                         <label for="exampleFormControlImage">Картинка</label>
-                        <input type="file" id="exampleFormControlImage" class="form-control" name="twitch_action_image" accept="image/*">
+                        <input type="file" id="exampleFormControlImage" name="twitch_action_image" accept="image/*">
                         {% if source.image %}
                             <img src="/{{ source.image.attachment_filename }}" width="200px">
                         {% endif %}
                     </div>
-                    <div class="mb-0">
-                        <label for="exampleFormControlTextarea1">Текст для пересылки боту</label>
-                        <textarea class="form-control" id="exampleFormControlTextarea1" rows="3" name="twitch_action_text">{{ source.twitch_action_text }}</textarea>
+                    <div class="mb-3">
+                        <label for="exampleFormControlTextarea1">Текст для пересылки боту. Доступные переменные: {{ '{{ username }}' }}, {{ '{{ twich_link }}' }}</label>
+                        {{ form.twitch_action_text }}
                     </div>
-                    <div class="mb-0">
+                    <div class="mb-3">
                         <label for="flexCheckDefault">Активно</label>
                         <input class="form-control" id="flexCheckDefault" type="checkbox" name="is_active" value="is_active" {% if source.is_active%}checked{% endif %}>
                     </div>

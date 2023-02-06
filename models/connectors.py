@@ -1,18 +1,28 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, text
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import relationship
 
 from db.pg import Base
 
-# from sqlalchemy.orm import relationship
-
 
 class Twitch(Base):
     __tablename__ = "twitch"
+    __table_args__ = (UniqueConstraint("channel_name", "tgbot_id"),)
 
     id = Column(Integer, primary_key=True)
     channel_name = Column(String, nullable=False)
+    twitch_username = Column(String)
+    twitch_link = Column(String)
     broadcaster_id = Column(Integer)
     tgbot_id = Column(Integer, ForeignKey("tgbots.id"))
     author_id = Column(Integer, ForeignKey("users.id"), nullable=False)

@@ -27,16 +27,24 @@
                     <thead>
                         <tr>
                             <th>Имя канала</th>
-                            <th>Активен</th>
                             <th>Создан</th>
+                            <th>Статус</th>
+                            <th></th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for twitch_source in twitch_sources %}
                         <tr>
                             <td><a href="/panel/twitch/edit/{{ twitch_source.id }}">{{ twitch_source.channel_name|truncate(24, True) }}</a></td>
-                            <td>{{ twitch_source.is_active }}</td>
                             <td>{{ twitch_source.created_at }}</td>
+                            <td>Не активен</td>
+                            <td align="center">
+                                <form action="{{ url_for('panel.activate_webhook') }}" method="POST">
+                                    <input type="hidden" name="tgbot_id" value="{{ twitch_source.tgbot_id }}">
+                                    <input type="hidden" name="twitch_id" value="{{ twitch_source.id }}">
+                                    <button class="btn btn-secondary" type="submit">Активировать</button>
+                                </form>
+</td>
                         </tr>
                         {% endfor %}
                     </tbody>

@@ -65,9 +65,7 @@ def get_bots_choices():
 
 async def get_broadcaster(channel_name: str):
     twitch_service = await TwitchService(config.APP_ID, config.APP_SECRET)
-    broadcaster_user = await first(
-        twitch_service.get_users(logins=channel_name)
-    )
+    broadcaster_user = await first(twitch_service.get_users(logins=channel_name))
     return broadcaster_user
 
 
@@ -124,8 +122,17 @@ def new_twitch_source_post():
                     400,
                 )
 
-    broadcaster = loop.run_until_complete(get_broadcaster(form.twitch_channel_name.data))
-
+    broadcaster = loop.run_until_complete(
+        get_broadcaster(form.twitch_channel_name.data)
+    )
+    if not broadcaster:
+        flash("Ваш broadcaster.id (twitch) не найден", category="danger")
+        return (
+            render_template(
+                "panel_new_sources.html", current_user=current_user, form=form
+            ),
+            400,
+        )
     twitch = Twitch(
         channel_name=form.twitch_channel_name.data,
         broadcaster_id=broadcaster.id,
@@ -133,7 +140,18 @@ def new_twitch_source_post():
         tgbot_id=form.bot.data,
     )
     db_session.add(twitch)
-    db_session.flush()
+    try:
+        db_session.flush()
+    except Exception as e:
+        print(e)
+        flash("1 бот может быть привязан только 1 каналу", category="danger")
+        db_session.rollback()
+        return (
+            render_template(
+                "panel_new_sources.html", current_user=current_user, form=form
+            ),
+            400,
+        )
 
     twitch_action = TwitchActions(
         twitch_id=twitch.id,
@@ -164,7 +182,7 @@ def new_twitch_source_post():
         )
 
     flash("Источник успешно добавлен", category="success")
-    return redirect(f'/panel/twitch/edit/{twitch.id}/')
+    return redirect(f"/panel/twitch/edit/{twitch.id}/")
 
 
 @app.route("/panel/twitch/edit/<int:twitch_id>/")
@@ -175,14 +193,16 @@ def edit_twitch_source(twitch_id: int):
         flash("Запись не найдена", category="danger")
         return redirect(url_for("panel.list_sources"))
 
-    form = NewTwitchSource(
-        twitch_channel_name=twitch.channel_name,
-        twitch_action=twitch.actions.action_name,
-        twitch_action_text=twitch.actions.action_text,
-    )
+    form = NewTwitchSource()
     form.bot.choices = get_bots_choices()
     form.bot.default = twitch.tgbot_id
     form.process()
+
+    form.twitch_channel_name.data = twitch.channel_name
+    form.twitch_action.data = twitch.actions.action_name
+    form.twitch_action_text.data = twitch.actions.action_text
+    form.twitch_username.data = twitch.twitch_username
+    form.twitch_link.data = twitch.twitch_link
 
     return render_template(
         "panel_edit_sources.html",
@@ -210,29 +230,35 @@ def edit_twitch_source_post(twitch_id: int):
     form = NewTwitchSource(request.form)
     form.bot.choices = get_bots_choices()
     if not form.validate():
-        return render_template(
-            "panel_edit_sources.html",
-            current_user=current_user,
-            form=form,
-            source={
-                "id": twitch.id,
-                "is_active": twitch.is_active,
-                "twitch_channel_name": twitch.channel_name,
-                "twitch_action_name": twitch.actions.action_name,
-                "twitch_action_text": twitch.actions.action_text,
-                "image": twitch.actions.attachments,
-            },
-        ), 422
+        return (
+            render_template(
+                "panel_edit_sources.html",
+                current_user=current_user,
+                form=form,
+                source={
+                    "id": twitch.id,
+                    "is_active": twitch.is_active,
+                    "twitch_channel_name": twitch.channel_name,
+                    "twitch_action_name": twitch.actions.action_name,
+                    "twitch_action_text": twitch.actions.action_text,
+                    "image": twitch.actions.attachments,
+                },
+            ),
+            422,
+        )
     try:
         if twitch.channel_name != form.twitch_channel_name.data:
-            twitch.broadcaster_id = loop.run_until_complete(get_broadcaster(form.twitch_channel_name.data)).id
+            twitch.broadcaster_id = loop.run_until_complete(
+                get_broadcaster(form.twitch_channel_name.data)
+            ).id
         twitch.channel_name = form.twitch_channel_name.data
         twitch.is_active = True if request.form.get("is_active") else False
         twitch.actions.action_name = form.twitch_channel_name.data
         twitch.actions.action_text = form.twitch_action_text.data
         twitch.tgbot_id = int(form.bot.data)
+        twitch.twitch_username = form.twitch_username.data
+        twitch.twitch_link = form.twitch_link.data
         db_session.commit()
-        flash("Запись обновлена", category="success")
 
         if "twitch_action_image" in request.files:
             file = request.files["twitch_action_image"]
@@ -263,11 +289,22 @@ def edit_twitch_source_post(twitch_id: int):
                 filename = "/".join(split)
                 twitch_attachment = (
                     db_session.query(TwitchActionsAttachments)
-                    .filter(TwitchActionsAttachments.twitch_action_id == twitch.id)
+                    .filter(
+                        TwitchActionsAttachments.twitch_action_id == twitch.actions.id
+                    )
                     .first()
                 )
+
                 if twitch_attachment:
                     twitch_attachment.attachment_filename = filename
+                    db_session.commit()
+                else:
+                    twitch_attachment = TwitchActionsAttachments(
+                        twitch_action_id=twitch.actions.id,
+                        attachment_filename=filename,
+                        attachment_type="image",
+                    )
+                    db_session.add(twitch_attachment)
                     db_session.commit()
 
             else:
@@ -284,6 +321,7 @@ def edit_twitch_source_post(twitch_id: int):
         )
         db_session.rollback()
 
+    flash("Запись обновлена", category="success")
     return render_template(
         "panel_edit_sources.html",
         current_user=current_user,
@@ -341,6 +379,7 @@ def new_bots_post():
     new_tgbot = Bots(
         name=form.bot_name.data,
         tg_key=form.bot_key.data,
+        channels=form.bot_channels.data.split(","),
         author_id=current_user.id,
     )
     db_session.add(new_tgbot)
@@ -364,12 +403,15 @@ def new_bots_post():
 @app.route("/panel/bots/edit/<int:bot_id>/")
 @login_required
 def edit_bots(bot_id: int):
-    bot = db_session.query(Bots).filter(Bots.id == bot_id).first()
+    bot: Bots = db_session.query(Bots).filter(Bots.id == bot_id).first()
     if not bot:
         flash("Запись не найдена", category="danger")
         return redirect(url_for("panel.list_bots"))
 
     form = NewBotForm()
+    form.bot_name.data = bot.name
+    form.bot_channels.data = ",".join(bot.channels) if bot.channels else ""
+    form.bot_key.data = bot.tg_key
     return render_template(
         "panel_edit_bots.html", current_user=current_user, bot=bot, form=form
     )
@@ -394,6 +436,7 @@ def edit_bots_post(bot_id: int):
 
     bot.name = form.bot_name.data
     bot.tg_key = form.bot_key.data
+    bot.channels = form.bot_channels.data.split(",") if form.bot_channels.data else []
     bot.is_active = True if request.form.get("is_active") else False
     db_session.commit()
 
@@ -401,3 +444,13 @@ def edit_bots_post(bot_id: int):
     return render_template(
         "panel_edit_bots.html", current_user=current_user, bot=bot, form=form
     )
+
+
+@app.route("/panel/source/twitch/activate/", methods=["POST"])
+@login_required
+def activate_webhook():
+    tgbot_id = int(request.form["tgbot_id"])
+    twitch_id = int(request.form["twitch_id"])
+
+    flash("Пересылка сообщений активирована", category="success")
+    return redirect(url_for("panel.list_sources"))

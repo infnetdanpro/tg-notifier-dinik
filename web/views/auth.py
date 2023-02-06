@@ -73,7 +73,7 @@ def signup_post():
         flash("Что-то пошло не так, обратитесь к админу", category="danger")
         return redirect(url_for("signup"))
 
-    return redirect(url_for("panel"))
+    return redirect(url_for("panel.index"))
 
 
 @app.route("/logout/")
