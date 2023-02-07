@@ -34,15 +34,22 @@
                     </thead>
                     <tbody>
                         {% for twitch_source in twitch_sources %}
+                        {% set webhook_key = twitch_source.id|string() + '_' + twitch_source.tgbot_id|string() %}
+                        {% set button_text = 'Активировать' %}
+                        {% set form_url = url_for('panel.activate_webhook') %}
+                        {% if webhook_statuses[webhook_key] == 'enabled' %}
+                            {% set button_text = 'Деактивировать' %}
+                            {% set form_url = url_for('panel.deactivate_webhook') %}
+                        {% endif %}
                         <tr>
                             <td><a href="/panel/twitch/edit/{{ twitch_source.id }}">{{ twitch_source.channel_name|truncate(24, True) }}</a></td>
                             <td>{{ twitch_source.created_at }}</td>
-                            <td>Не активен</td>
+                            <td>{{ webhook_statuses[webhook_key] }}</td>
                             <td align="center">
-                                <form action="{{ url_for('panel.activate_webhook') }}" method="POST">
+                                <form action="{{ form_url }}" method="POST">
                                     <input type="hidden" name="tgbot_id" value="{{ twitch_source.tgbot_id }}">
                                     <input type="hidden" name="twitch_id" value="{{ twitch_source.id }}">
-                                    <button class="btn btn-secondary" type="submit">Активировать</button>
+                                    <button class="btn btn-secondary" type="submit">{{ button_text }}</button>
                                 </form>
 </td>
                         </tr>

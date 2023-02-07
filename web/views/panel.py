@@ -1,22 +1,55 @@
 import os
 from datetime import datetime
+from typing import List
 
+import requests
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from twitchAPI.helper import first
 from twitchAPI.twitch import Twitch as TwitchService
-from werkzeug.utils import secure_filename
 
 from config import config
 from db.pg import db_session
 from models.bots import Bots
 from models.connectors import Twitch, TwitchActions, TwitchActionsAttachments
+from models.webhooks import Webhooks
 from web.shared_loop import loop
 from web.views.forms.bot import NewBotForm
 from web.views.forms.new_twitch import NewTwitchSource, allowed_file
 
 app = Blueprint("panel", __name__)
 
+
+
+def sync_webhook_statuses():
+    auth_resp = requests.post(
+        f"https://id.twitch.tv/oauth2/token?client_id={config.APP_ID}&client_secret={config.APP_SECRET}&grant_type=client_credentials&scope="
+    )
+    bearer = auth_resp.json()["access_token"]
+    headers = {"Client-ID": config.APP_ID, "Authorization": f"Bearer {bearer}"}
+
+    webhooks_response = requests.get(
+        "https://api.twitch.tv/helix/eventsub/subscriptions", headers=headers
+    )
+    if webhooks_response.status_code != 200:
+        print('Something happend webhook sync!')
+        return
+
+    webhook_statuses = {}
+    for row in webhooks_response.json()['data']:
+        webhook_statuses[row['id']] = row['status']
+
+    webhook_ids = list(webhook_statuses.keys())
+    webhooks_db = db_session.query(Webhooks).filter(Webhooks.twitch_webhook_id.in_(webhook_ids)).all()
+
+    bulk_mappings = []
+    for webhook_db in webhooks_db:
+        bulk_mappings.append({
+            'id': webhook_db.id,
+            'twitch_webhook_status': webhook_statuses[webhook_db.twitch_webhook_id]
+        })
+    db_session.bulk_update_mappings(Webhooks, bulk_mappings)
+    db_session.commit()
 
 @app.route("/panel/")
 @login_required
@@ -27,16 +60,28 @@ def index():
 @app.route("/panel/sources/")
 @login_required
 def list_sources():
-    twitch_sources = (
+    twitch_sources: List[Twitch] = (
         db_session.query(Twitch)
         .filter(Twitch.author_id == current_user.id)
         .order_by(Twitch.created_at.desc())
         .all()
     )
+
+    sync_webhook_statuses()
+
+    webhook_statuses = {}
+    for twitch in twitch_sources:
+        webhook: Webhooks = db_session.query(Webhooks).filter(Webhooks.twitch_id == twitch.id, Webhooks.tgbot_id == twitch.tgbot_id).first()
+        if not webhook:
+            continue
+
+        webhook_statuses[f'{webhook.twitch_id}_{webhook.tgbot_id}'] = webhook.twitch_webhook_status
+
     return render_template(
         "panel_list_sources.html",
         current_user=current_user,
         twitch_sources=twitch_sources,
+        webhook_statuses=webhook_statuses,
     )
 
 
@@ -452,8 +497,84 @@ def edit_bots_post(bot_id: int):
 @app.route("/panel/source/twitch/activate/", methods=["POST"])
 @login_required
 def activate_webhook():
-    tgbot_id = int(request.form["tgbot_id"])
-    twitch_id = int(request.form["twitch_id"])
+    twitch_id = request.form["twitch_id"]
+    tgbot_id = request.form["tgbot_id"]
+
+    # set webhook path
+    webhook_url = config.EVENTSUB_URL + f"/webhooks/{twitch_id}/{tgbot_id}/"
+    twitch_data: Twitch = (
+        db_session.query(Twitch).filter(Twitch.id == twitch_id).first()
+    )
+    if not twitch_data:
+        flash("Ошибка активации пересылки", category="danger")
+        return redirect(url_for("panel.list_sources"))
+
+    # get auth bearer token header
+    auth_resp = requests.post(
+        f"https://id.twitch.tv/oauth2/token?client_id={config.APP_ID}&client_secret={config.APP_SECRET}&grant_type=client_credentials&scope="
+    )
+    bearer = auth_resp.json()["access_token"]
+    headers = {"Client-ID": config.APP_ID, "Authorization": f"Bearer {bearer}"}
+    data = {
+        "type": "stream.online",
+        "version": "1",
+        "condition": {"broadcaster_user_id": str(twitch_data.broadcaster_id)},
+        "transport": {
+            "method": "webhook",
+            "callback": webhook_url,
+            "secret": "teikpgfkpthqojstncsu",
+        },
+    }
+
+    r = requests.post(
+        url="https://api.twitch.tv/helix/eventsub/subscriptions",
+        headers=headers,
+        json=data,
+    )
+    if r.status_code != 202:
+        flash('Ошибка установки пересылки', category='danger')
+        return redirect(url_for("panel.list_sources"))
+
+    hook = r.json()
+    webhook_data = Webhooks(
+        tgbot_id=tgbot_id,
+        twitch_id=twitch_id,
+        twitch_webhook_id=hook['data'][0]['id'],
+        twitch_webhook_status=hook['data'][0]['status'],
+        data=hook,
+    )
+    db_session.add(webhook_data)
+    db_session.commit()
 
     flash("Пересылка сообщений активирована", category="success")
     return redirect(url_for("panel.list_sources"))
+
+
+@app.route("/panel/source/twitch/deactivate/", methods=["POST"])
+@login_required
+def deactivate_webhook():
+    twitch_id = request.form["twitch_id"]
+    tgbot_id = request.form["tgbot_id"]
+
+    webhook: Webhooks = db_session.query(Webhooks).filter(Webhooks.twitch_id == twitch_id, Webhooks.tgbot_id == tgbot_id).first()
+    if not webhook:
+        flash('Деактивация неуспешна, вебхук не найден', category='danger')
+        return redirect(url_for("panel.list_sources"))
+    # get enabled webhooks
+    auth_resp = requests.post(
+        f"https://id.twitch.tv/oauth2/token?client_id={config.APP_ID}&client_secret={config.APP_SECRET}&grant_type=client_credentials&scope="
+    )
+    bearer = auth_resp.json()["access_token"]
+    headers = {"Client-ID": config.APP_ID, "Authorization": f"Bearer {bearer}"}
+    subs_resp = requests.delete(
+        "https://api.twitch.tv/helix/eventsub/subscriptions", params={'id': webhook.twitch_webhook_id}, headers=headers
+    )
+    db_session.delete(webhook)
+    db_session.commit()
+    if subs_resp.status_code == 204:
+        flash(f"Пересылка сообщений деактивирована ({twitch_id})", category="success")
+        return redirect(url_for("panel.list_sources"))
+
+    flash("Что-то пошло не так, обратитесь к админу", category="danger")
+    return redirect(url_for("panel.list_sources"))
+

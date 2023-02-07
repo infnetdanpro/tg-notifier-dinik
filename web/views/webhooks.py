@@ -1,7 +1,8 @@
 import os
 
-import aiohttp
+import requests
 from flask import Blueprint, Response, jsonify, request
+from jinja2 import Environment
 
 from config import config
 from db.pg import db_session
@@ -10,8 +11,6 @@ from models.connectors import Twitch
 
 app = Blueprint("webhooks", __name__)
 
-import requests
-from jinja2 import Environment
 
 jinja_env = Environment()
 
@@ -22,58 +21,10 @@ jinja_env = Environment()
 # 3.
 
 
-def prepare_file(obj):
-    """
-    returns os.path.basename for a given file
-
-    :param obj:
-    :return:
-    """
-    name = getattr(obj, "name", None)
-    if name and isinstance(name, str) and name[0] != "<" and name[-1] != ">":
-        return os.path.basename(name)
-
-
-def prepare_data(params=None, files=None):
-    """
-    prepare data for request.
-
-    :param params:
-    :param files:
-    :return:
-    """
-    data = {}
-
-    if params:
-        for key, value in params.items():
-            data[key] = str(value)
-
-    if files:
-        for key, f in files.items():
-            if isinstance(f, tuple):
-                if len(f) == 2:
-                    filename, fileobj = f
-                else:
-                    raise ValueError(
-                        "Tuple must have exactly 2 elements: filename, fileobj"
-                    )
-            else:
-                filename, fileobj = prepare_file(f) or key, f
-
-            data[key] = fileobj
-
-    return data
-
-
 @app.route("/webhooks/<int:twitch_id>/<int:tgbot_id>/", methods=["POST"])
 def post_webhooks(twitch_id: int, tgbot_id: int):
     if not all([twitch_id, tgbot_id]):
         return "Missed mandatory fields", 404
-
-    # first request is verification?
-    # {'subscription': {'id': '342cc30c-f372-4214-8c05-05f82051e1b7', 'status': 'webhook_callback_verification_pending', 'type': 'stream.online', 'version': '1', 'condition': {'broadcaster_user
-    # _id': '47655518'}, 'transport': {'method': 'webhook', 'callback': 'https://8cc2-62-4-55-19.eu.ngrok.io/webhooks/danpro_infnet/1/'}, 'created_at': '2023-02-05T12:47:48.374168559Z', 'cost': 1}, 'chal
-    # lenge': 'vzHrrSksraBn6fnYrmx4AseZEQnYDn52AaxNEQk7Nfo'}
 
     data = request.get_json()
 
@@ -96,11 +47,11 @@ def post_webhooks(twitch_id: int, tgbot_id: int):
     ):
         twitch: Twitch = db_session.query(Twitch).filter(Twitch.id == twitch_id).first()
         if not twitch:
-            return "Not found twitch id", 404
+            return "Not found twitch id", 405
 
         tgbot: Bots = db_session.query(Bots).filter(Bots.id == tgbot_id).first()
         if not tgbot:
-            return "Not found bot id", 404
+            return "Not found bot id", 406
 
         # send message to channels
         # get channel_ids
@@ -157,7 +108,7 @@ def post_webhooks(twitch_id: int, tgbot_id: int):
 
 
 @app.route("/webhooks-list/")
-def unsubscribe_webhooks():
+def webhooks_list():
     auth_resp = requests.post(
         f"https://id.twitch.tv/oauth2/token?client_id={config.APP_ID}&client_secret={config.APP_SECRET}&grant_type=client_credentials&scope="
     )
@@ -169,29 +120,18 @@ def unsubscribe_webhooks():
     return jsonify(subs_resp.json())
 
 
-if __name__ == "__main__":
-    # установка коллбека
-    # {'data': [{'id': '4a4cf6f4-3f9b-49eb-9981-339ac3684a08', 'status': 'webhook_callback_verification_pending', 'type': 'stream.online', 'version': '1', 'condition': {'broadcaster_user_id': '47655518'}, 'created_at': '2023-02-05T19:48:33.932778233Z', 'transport': {'method': 'webhook', 'callback': 'https://8cc2-62-4-55-19.eu.ngrok.io/webhooks/danpro_infnet/'}, 'cost': 1}], 'total': 1, 'max_total_cost': 10000, 'total_cost': 1}
-    headers = {
-        "Client-ID": "4d8t7cbll7i3bg3ddc533pibisxvaj",
-        "Content-Type": "application/json",
-        "Authorization": "Bearer 6ruey65gvayrn1ap5s1xxu4dfolle6",
-    }
-    data = {
-        "type": "stream.online",
-        "version": "1",
-        "condition": {"broadcaster_user_id": "47655518"},
-        "transport": {
-            "method": "webhook",
-            "callback": "https://8cc2-62-4-55-19.eu.ngrok.io/webhooks/danpro_infnet2/",
-            "secret": "teikpgfkpthqojstncsu",
-        },
-    }
-
-    r = requests.post(
-        url="https://api.twitch.tv/helix/eventsub/subscriptions",
-        headers=headers,
-        json=data,
+@app.route('/webhook-unsub/')
+def webhook_unsub():
+    webhook_id = request.args.get('id')
+    auth_resp = requests.post(
+        f"https://id.twitch.tv/oauth2/token?client_id={config.APP_ID}&client_secret={config.APP_SECRET}&grant_type=client_credentials&scope="
     )
-    print(r.status_code)
-    print(r.json())
+    bearer = auth_resp.json()["access_token"]
+    headers = {"Client-ID": config.APP_ID, "Authorization": f"Bearer {bearer}"}
+    subs_resp = requests.delete(
+        "https://api.twitch.tv/helix/eventsub/subscriptions", params={'id': webhook_id}, headers=headers
+    )
+    if subs_resp.status_code == 204:
+        return jsonify({'result': 'deleted'})
+
+    return jsonify(subs_resp.json()), subs_resp.status_code
