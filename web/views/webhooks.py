@@ -120,18 +120,20 @@ def webhooks_list():
     return jsonify(subs_resp.json())
 
 
-@app.route('/webhook-unsub/')
+@app.route("/webhook-unsub/")
 def webhook_unsub():
-    webhook_id = request.args.get('id')
+    webhook_id = request.args.get("id")
     auth_resp = requests.post(
         f"https://id.twitch.tv/oauth2/token?client_id={config.APP_ID}&client_secret={config.APP_SECRET}&grant_type=client_credentials&scope="
     )
     bearer = auth_resp.json()["access_token"]
     headers = {"Client-ID": config.APP_ID, "Authorization": f"Bearer {bearer}"}
     subs_resp = requests.delete(
-        "https://api.twitch.tv/helix/eventsub/subscriptions", params={'id': webhook_id}, headers=headers
+        "https://api.twitch.tv/helix/eventsub/subscriptions",
+        params={"id": webhook_id},
+        headers=headers,
     )
     if subs_resp.status_code == 204:
-        return jsonify({'result': 'deleted'})
+        return jsonify({"result": "deleted"})
 
     return jsonify(subs_resp.json()), subs_resp.status_code

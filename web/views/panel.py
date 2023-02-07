@@ -20,7 +20,6 @@ from web.views.forms.new_twitch import NewTwitchSource, allowed_file
 app = Blueprint("panel", __name__)
 
 
-
 def sync_webhook_statuses():
     auth_resp = requests.post(
         f"https://id.twitch.tv/oauth2/token?client_id={config.APP_ID}&client_secret={config.APP_SECRET}&grant_type=client_credentials&scope="
@@ -32,24 +31,31 @@ def sync_webhook_statuses():
         "https://api.twitch.tv/helix/eventsub/subscriptions", headers=headers
     )
     if webhooks_response.status_code != 200:
-        print('Something happend webhook sync!')
+        print("Something happend webhook sync!")
         return
 
     webhook_statuses = {}
-    for row in webhooks_response.json()['data']:
-        webhook_statuses[row['id']] = row['status']
+    for row in webhooks_response.json()["data"]:
+        webhook_statuses[row["id"]] = row["status"]
 
     webhook_ids = list(webhook_statuses.keys())
-    webhooks_db = db_session.query(Webhooks).filter(Webhooks.twitch_webhook_id.in_(webhook_ids)).all()
+    webhooks_db = (
+        db_session.query(Webhooks)
+        .filter(Webhooks.twitch_webhook_id.in_(webhook_ids))
+        .all()
+    )
 
     bulk_mappings = []
     for webhook_db in webhooks_db:
-        bulk_mappings.append({
-            'id': webhook_db.id,
-            'twitch_webhook_status': webhook_statuses[webhook_db.twitch_webhook_id]
-        })
+        bulk_mappings.append(
+            {
+                "id": webhook_db.id,
+                "twitch_webhook_status": webhook_statuses[webhook_db.twitch_webhook_id],
+            }
+        )
     db_session.bulk_update_mappings(Webhooks, bulk_mappings)
     db_session.commit()
+
 
 @app.route("/panel/")
 @login_required
@@ -71,11 +77,19 @@ def list_sources():
 
     webhook_statuses = {}
     for twitch in twitch_sources:
-        webhook: Webhooks = db_session.query(Webhooks).filter(Webhooks.twitch_id == twitch.id, Webhooks.tgbot_id == twitch.tgbot_id).first()
+        webhook: Webhooks = (
+            db_session.query(Webhooks)
+            .filter(
+                Webhooks.twitch_id == twitch.id, Webhooks.tgbot_id == twitch.tgbot_id
+            )
+            .first()
+        )
         if not webhook:
             continue
 
-        webhook_statuses[f'{webhook.twitch_id}_{webhook.tgbot_id}'] = webhook.twitch_webhook_status
+        webhook_statuses[
+            f"{webhook.twitch_id}_{webhook.tgbot_id}"
+        ] = webhook.twitch_webhook_status
 
     return render_template(
         "panel_list_sources.html",
@@ -532,15 +546,15 @@ def activate_webhook():
         json=data,
     )
     if r.status_code != 202:
-        flash('Ошибка установки пересылки', category='danger')
+        flash("Ошибка установки пересылки", category="danger")
         return redirect(url_for("panel.list_sources"))
 
     hook = r.json()
     webhook_data = Webhooks(
         tgbot_id=tgbot_id,
         twitch_id=twitch_id,
-        twitch_webhook_id=hook['data'][0]['id'],
-        twitch_webhook_status=hook['data'][0]['status'],
+        twitch_webhook_id=hook["data"][0]["id"],
+        twitch_webhook_status=hook["data"][0]["status"],
         data=hook,
     )
     db_session.add(webhook_data)
@@ -556,9 +570,13 @@ def deactivate_webhook():
     twitch_id = request.form["twitch_id"]
     tgbot_id = request.form["tgbot_id"]
 
-    webhook: Webhooks = db_session.query(Webhooks).filter(Webhooks.twitch_id == twitch_id, Webhooks.tgbot_id == tgbot_id).first()
+    webhook: Webhooks = (
+        db_session.query(Webhooks)
+        .filter(Webhooks.twitch_id == twitch_id, Webhooks.tgbot_id == tgbot_id)
+        .first()
+    )
     if not webhook:
-        flash('Деактивация неуспешна, вебхук не найден', category='danger')
+        flash("Деактивация неуспешна, вебхук не найден", category="danger")
         return redirect(url_for("panel.list_sources"))
     # get enabled webhooks
     auth_resp = requests.post(
@@ -567,7 +585,9 @@ def deactivate_webhook():
     bearer = auth_resp.json()["access_token"]
     headers = {"Client-ID": config.APP_ID, "Authorization": f"Bearer {bearer}"}
     subs_resp = requests.delete(
-        "https://api.twitch.tv/helix/eventsub/subscriptions", params={'id': webhook.twitch_webhook_id}, headers=headers
+        "https://api.twitch.tv/helix/eventsub/subscriptions",
+        params={"id": webhook.twitch_webhook_id},
+        headers=headers,
     )
     db_session.delete(webhook)
     db_session.commit()
@@ -577,4 +597,3 @@ def deactivate_webhook():
 
     flash("Что-то пошло не так, обратитесь к админу", category="danger")
     return redirect(url_for("panel.list_sources"))
-
