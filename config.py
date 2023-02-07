@@ -13,7 +13,7 @@ class Config:
     PROJECT_PATH = os.getcwd()
     UPLOAD_FOLDER = ["web", "static", "user_uploads"]
     ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif"}
-    EVENTSUB_URL = "https://1dc4-62-4-36-186.ngrok.io"
+    EVENTSUB_URL = os.getenv("PROJECT_DOMAIN", "https://1dc4-62-4-36-186.ngrok.io")
 
     # client id
     APP_ID = "4d8t7cbll7i3bg3ddc533pibisxvaj"
