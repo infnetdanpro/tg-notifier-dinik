@@ -19,7 +19,6 @@ class Config:
     APP_ID = "4d8t7cbll7i3bg3ddc533pibisxvaj"
     # client secret
     APP_SECRET = "re91qzx97uyb7gpbnprnz0bu9qj4j1"
-    SERVER_NAME = os.getenv("PROJECT_DOMAIN", "https://1dc4-62-4-36-186.ngrok.io")
 
 
 config = Config()

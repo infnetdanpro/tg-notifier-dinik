@@ -19,7 +19,6 @@ def create_app() -> "Flask":
     flask_app.secret_key = "@#!$23askjdhkash123__#$_#@$//"
     flask_app.config["UPLOADED_PHOTOS_DEST"] = os.path.join(os.getcwd(), "uploads")
     flask_app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
-    flask_app.config["SERVER_NAME"] = config.SERVER_NAME
     login_manager = LoginManager()
     login_manager.login_view = "auth.login"
     login_manager.init_app(flask_app)
