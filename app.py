@@ -2,6 +2,7 @@ import os
 
 from flask import Flask
 from flask_login import LoginManager
+from jinja2 import Environment
 
 from db.pg import db_session
 from models.user import Users

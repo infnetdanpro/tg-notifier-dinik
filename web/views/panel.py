@@ -83,12 +83,55 @@ def new_twitch_source_post():
         )
 
     filename = None
+
+    broadcaster = loop.run_until_complete(
+        get_broadcaster(form.twitch_channel_name.data)
+    )
+    if not broadcaster:
+        flash("Ваш broadcaster.id (twitch) не найден", category="danger")
+        return (
+            render_template(
+                "panel_new_sources.html", current_user=current_user, form=form
+            ),
+            400,
+        )
+    twitch = Twitch(
+        channel_name=form.twitch_channel_name.data,
+        broadcaster_id=broadcaster.id,
+        twitch_username=form.twitch_username.data,
+        twitch_link=form.twitch_link.data,
+        author_id=current_user.id,
+        tgbot_id=form.bot.data,
+    )
+    db_session.add(twitch)
+    try:
+        db_session.flush()
+    except Exception as e:
+        print(e)
+        flash("1 бот может быть привязан только 1 каналу", category="danger")
+        db_session.rollback()
+        return (
+            render_template(
+                "panel_new_sources.html", current_user=current_user, form=form
+            ),
+            400,
+        )
+
+    twitch_action = TwitchActions(
+        twitch_id=twitch.id,
+        author_id=current_user.id,
+        action_name=form.twitch_action.data,
+        action_text=form.twitch_action_text.data,
+    )
+    db_session.add(twitch_action)
+    db_session.flush()
+
     if "twitch_action_image" in request.files:
         file = request.files["twitch_action_image"]
         # if user does not select file, browser also
         # submit an empty part without filename
         if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename).lower()
+            filename = str(twitch.id)
             dt = datetime.utcnow().date()
             user_path = os.path.join(
                 config.PROJECT_PATH,
@@ -121,46 +164,6 @@ def new_twitch_source_post():
                     ),
                     400,
                 )
-
-    broadcaster = loop.run_until_complete(
-        get_broadcaster(form.twitch_channel_name.data)
-    )
-    if not broadcaster:
-        flash("Ваш broadcaster.id (twitch) не найден", category="danger")
-        return (
-            render_template(
-                "panel_new_sources.html", current_user=current_user, form=form
-            ),
-            400,
-        )
-    twitch = Twitch(
-        channel_name=form.twitch_channel_name.data,
-        broadcaster_id=broadcaster.id,
-        author_id=current_user.id,
-        tgbot_id=form.bot.data,
-    )
-    db_session.add(twitch)
-    try:
-        db_session.flush()
-    except Exception as e:
-        print(e)
-        flash("1 бот может быть привязан только 1 каналу", category="danger")
-        db_session.rollback()
-        return (
-            render_template(
-                "panel_new_sources.html", current_user=current_user, form=form
-            ),
-            400,
-        )
-
-    twitch_action = TwitchActions(
-        twitch_id=twitch.id,
-        author_id=current_user.id,
-        action_name=form.twitch_action.data,
-        action_text=form.twitch_action_text.data,
-    )
-    db_session.add(twitch_action)
-    db_session.flush()
 
     if filename:
         # add attachments
@@ -265,7 +268,7 @@ def edit_twitch_source_post(twitch_id: int):
             # if user does not select file, browser also
             # submit an empty part without filename
             if file and allowed_file(file.filename):
-                filename = secure_filename(file.filename).lower()
+                filename = str(twitch.id)
                 dt = datetime.utcnow().date()
                 user_path = os.path.join(
                     config.PROJECT_PATH,
