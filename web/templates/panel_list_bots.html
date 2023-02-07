@@ -36,7 +36,7 @@
                     <tbody>
                         {% for bot in bots %}
                         <tr>
-                            <td><a href="/panel/bots/edit/{{ bot.id }}">{{ bot.name|truncate(24, True) }}</a></td>
+                            <td><a href="/panel/bots/edit/{{ bot.id }}/">{{ bot.name|truncate(24, True) }}</a></td>
                             <td>{{ bot.is_active }}</td>
                             <td>{{ bot.created_at }}</td>
                             <td>(available in future)</td>

@@ -42,7 +42,7 @@
                             {% set form_url = url_for('panel.deactivate_webhook') %}
                         {% endif %}
                         <tr>
-                            <td><a href="/panel/twitch/edit/{{ twitch_source.id }}">{{ twitch_source.channel_name|truncate(24, True) }}</a></td>
+                            <td><a href="/panel/twitch/edit/{{ twitch_source.id }}/">{{ twitch_source.channel_name|truncate(24, True) }}</a></td>
                             <td>{{ twitch_source.created_at }}</td>
                             <td>{{ webhook_statuses[webhook_key] }}</td>
                             <td align="center">
