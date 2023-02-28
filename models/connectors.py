@@ -59,3 +59,18 @@ class TwitchActionsAttachments(Base):
         DateTime, default=datetime.now, server_default=text("CURRENT_TIMESTAMP")
     )
     is_active = Column(Boolean, default=True, server_default=text("true"))
+
+
+class VkLive(Base):
+    __tablename__ = "vkplay_live"
+
+    id = Column(Integer, primary_key=True)
+    channel_name = Column(String, nullable=False)
+    is_live_now = Column(Boolean, default=False, server_default=text("false"))
+    is_active = Column(Boolean, default=True, server_default=text("true"))
+    author_id = Column(ForeignKey("users.id"), nullable=False)
+    channel_link = Column(String, nullable=False)
+    tgbot_id = Column(Integer, ForeignKey("tgbots.id"))
+    created_at = Column(
+        DateTime, default=datetime.now, server_default=text("CURRENT_TIMESTAMP")
+    )

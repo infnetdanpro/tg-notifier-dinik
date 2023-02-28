@@ -6,32 +6,12 @@
     <!-- Page Heading -->
     <h1 class="h3 mb-1 text-gray-800">Редактировать бота: Telegram</h1>
 
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        <br>
-        {% for category, message in messages %}
-            <div class="alert alert-{{ category }}" role="alert">
-                <center>{{ message }}</center>
-            </div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
-    {% if form.errors %}
-        <br>
-        {% for field, errors in form.errors.items() %}
-            {% for error in errors %}
-            <div class="alert alert-danger" role="alert">
-                <center>{{ field }}: {{ error }}</center>
-            </div>
-            {% endfor %}
-        {% endfor %}
-    {% endif %}
     <div class="card-body p-0">
         <!-- Nested Row within Card Body -->
         <div class="row">
             <div class="col-lg-6">
                 <div class="p-5">
-                   <form method="POST" action="/panel/bots/edit/{{ bot.id }}/" enctype=multipart/form-data>
+                   <form method="POST" action="{{ url_for('panel') }}/panel/bots/edit/{{ bot.id }}/" enctype=multipart/form-data>
                     <div class="mb-3">
                         <label for="exampleFormControlInput1">Имя бота</label>
                         {{ form.bot_name }}

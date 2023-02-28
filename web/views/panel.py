@@ -63,17 +63,17 @@ def index():
     return render_template("panel.html", current_user=current_user)
 
 
-@app.route("/panel/sources/")
+@app.route("/panel/source/twitch/")
 @login_required
-def list_sources():
+def twitch_list():
     twitch_sources: List[Twitch] = (
         db_session.query(Twitch)
         .filter(Twitch.author_id == current_user.id)
         .order_by(Twitch.created_at.desc())
         .all()
     )
-
-    sync_webhook_statuses()
+    if twitch_sources:
+        sync_webhook_statuses()
 
     webhook_statuses = {}
     for twitch in twitch_sources:
@@ -92,20 +92,20 @@ def list_sources():
         ] = webhook.twitch_webhook_status
 
     return render_template(
-        "panel_list_sources.html",
+        "panel/panel_list_twitch.html",
         current_user=current_user,
         twitch_sources=twitch_sources,
         webhook_statuses=webhook_statuses,
     )
 
 
-@app.route("/panel/twitch/new/")
+@app.route("/panel/source/twitch/new/")
 @login_required
 def new_twitch_source():
     form = NewTwitchSource()
     form.bot.choices = get_bots_choices()
     return render_template(
-        "panel_new_sources.html", current_user=current_user, form=form
+        "panel/panel_new_twitch.html", current_user=current_user, form=form
     )
 
 
@@ -136,7 +136,7 @@ def new_twitch_source_post():
     if not form.validate():
         return (
             render_template(
-                "panel_new_sources.html", current_user=current_user, form=form
+                "panel/panel_new_twitch.html", current_user=current_user, form=form
             ),
             422,
         )
@@ -150,7 +150,7 @@ def new_twitch_source_post():
         flash("Ваш broadcaster.id (twitch) не найден", category="danger")
         return (
             render_template(
-                "panel_new_sources.html", current_user=current_user, form=form
+                "panel/panel_new_twitch.html", current_user=current_user, form=form
             ),
             400,
         )
@@ -171,7 +171,7 @@ def new_twitch_source_post():
         db_session.rollback()
         return (
             render_template(
-                "panel_new_sources.html", current_user=current_user, form=form
+                "panel/panel_new_twitch.html", current_user=current_user, form=form
             ),
             400,
         )
@@ -219,7 +219,9 @@ def new_twitch_source_post():
                 )
                 return (
                     render_template(
-                        "panel_new_sources.html", current_user=current_user, form=form
+                        "panel/panel_new_twitch.html",
+                        current_user=current_user,
+                        form=form,
                     ),
                     400,
                 )
@@ -240,7 +242,7 @@ def new_twitch_source_post():
         db_session.rollback()
         flash(message=f"Сохранение не прошло: {e}", category="danger")
         return render_template(
-            "panel_new_sources.html", current_user=current_user, form=form
+            "panel/panel_new_twitch.html", current_user=current_user, form=form
         )
 
     flash("Источник успешно добавлен", category="success")
@@ -253,7 +255,7 @@ def edit_twitch_source(twitch_id: int):
     twitch: Twitch = db_session.query(Twitch).filter(Twitch.id == twitch_id).first()
     if not twitch:
         flash("Запись не найдена", category="danger")
-        return redirect(url_for("panel.list_sources"))
+        return redirect(url_for("panel.twitch_list"))
 
     form = NewTwitchSource()
     form.bot.choices = get_bots_choices()
@@ -267,7 +269,7 @@ def edit_twitch_source(twitch_id: int):
     form.twitch_link.data = twitch.twitch_link
 
     return render_template(
-        "panel_edit_sources.html",
+        "panel/panel_edit_sources.html",
         current_user=current_user,
         form=form,
         source={
@@ -294,7 +296,7 @@ def edit_twitch_source_post(twitch_id: int):
     if not form.validate():
         return (
             render_template(
-                "panel_edit_sources.html",
+                "panel/panel_edit_sources.html",
                 current_user=current_user,
                 form=form,
                 source={
@@ -385,7 +387,7 @@ def edit_twitch_source_post(twitch_id: int):
 
     flash("Запись обновлена", category="success")
     return render_template(
-        "panel_edit_sources.html",
+        "panel/panel_edit_sources.html",
         current_user=current_user,
         form=form,
         source={
@@ -409,7 +411,7 @@ def list_bots():
         .all()
     )
     return render_template(
-        "panel_list_bots.html", current_user=current_user, bots=user_bots
+        "panel/panel_list_bots.html", current_user=current_user, bots=user_bots
     )
 
 
@@ -417,7 +419,9 @@ def list_bots():
 @login_required
 def new_bots():
     form = NewBotForm()
-    return render_template("panel_new_bots.html", current_user=current_user, form=form)
+    return render_template(
+        "panel/panel_new_bots.html", current_user=current_user, form=form
+    )
 
 
 @app.route("/panel/bots/new/", methods=["POST"])
@@ -426,14 +430,14 @@ def new_bots_post():
     form = NewBotForm(request.form)
     if not form.validate():
         return render_template(
-            "panel_new_bots.html", current_user=current_user, form=form
+            "panel/panel_new_bots.html", current_user=current_user, form=form
         )
 
     if tgbot := db_session.query(Bots).filter(Bots.tg_key == form.bot_key.data).first():
         flash(f"Бот с этим ключом уже создан под ID: {tgbot.id}")
         return (
             render_template(
-                "panel_new_bots.html", current_user=current_user, form=form
+                "panel/panel_new_bots.html", current_user=current_user, form=form
             ),
             409,
         )
@@ -453,13 +457,15 @@ def new_bots_post():
         flash("При сохранении возникла ошибка, напишите админу", category="danger")
         return (
             render_template(
-                "panel_new_bots.html", current_user=current_user, form=form
+                "panel/panel_new_bots.html", current_user=current_user, form=form
             ),
             500,
         )
 
     flash("Запись создана", category="success")
-    return render_template("panel_new_bots.html", current_user=current_user, form=form)
+    return render_template(
+        "panel/panel_new_bots.html", current_user=current_user, form=form
+    )
 
 
 @app.route("/panel/bots/edit/<int:bot_id>/")
@@ -475,7 +481,7 @@ def edit_bots(bot_id: int):
     form.bot_channels.data = ",".join(bot.channels) if bot.channels else ""
     form.bot_key.data = bot.tg_key
     return render_template(
-        "panel_edit_bots.html", current_user=current_user, bot=bot, form=form
+        "panel/panel_edit_bots.html", current_user=current_user, bot=bot, form=form
     )
 
 
@@ -491,7 +497,10 @@ def edit_bots_post(bot_id: int):
     if not form.validate():
         return (
             render_template(
-                "panel_edit_bots.html", current_user=current_user, bot=bot, form=form
+                "panel/panel_edit_bots.html",
+                current_user=current_user,
+                bot=bot,
+                form=form,
             ),
             422,
         )
@@ -504,7 +513,7 @@ def edit_bots_post(bot_id: int):
 
     flash("Запись обновлена", category="success")
     return render_template(
-        "panel_edit_bots.html", current_user=current_user, bot=bot, form=form
+        "panel/panel_edit_bots.html", current_user=current_user, bot=bot, form=form
     )
 
 
@@ -521,7 +530,7 @@ def activate_webhook():
     )
     if not twitch_data:
         flash("Ошибка активации пересылки", category="danger")
-        return redirect(url_for("panel.list_sources"))
+        return redirect(url_for("panel.twitch_list"))
 
     # get auth bearer token header
     auth_resp = requests.post(
@@ -547,7 +556,7 @@ def activate_webhook():
     )
     if r.status_code != 202:
         flash("Ошибка установки пересылки", category="danger")
-        return redirect(url_for("panel.list_sources"))
+        return redirect(url_for("panel.twitch_list"))
 
     hook = r.json()
     webhook_data = Webhooks(
@@ -561,7 +570,7 @@ def activate_webhook():
     db_session.commit()
 
     flash("Пересылка сообщений активирована", category="success")
-    return redirect(url_for("panel.list_sources"))
+    return redirect(url_for("panel.twitch_list"))
 
 
 @app.route("/panel/source/twitch/deactivate/", methods=["POST"])
@@ -577,7 +586,7 @@ def deactivate_webhook():
     )
     if not webhook:
         flash("Деактивация неуспешна, вебхук не найден", category="danger")
-        return redirect(url_for("panel.list_sources"))
+        return redirect(url_for("panel.twitch_list"))
     # get enabled webhooks
     auth_resp = requests.post(
         f"https://id.twitch.tv/oauth2/token?client_id={config.APP_ID}&client_secret={config.APP_SECRET}&grant_type=client_credentials&scope="
@@ -593,7 +602,13 @@ def deactivate_webhook():
     db_session.commit()
     if subs_resp.status_code == 204:
         flash(f"Пересылка сообщений деактивирована ({twitch_id})", category="success")
-        return redirect(url_for("panel.list_sources"))
+        return redirect(url_for("panel.twitch_list"))
 
     flash("Что-то пошло не так, обратитесь к админу", category="danger")
-    return redirect(url_for("panel.list_sources"))
+    return redirect(url_for("panel.twitch_list"))
+
+
+@app.route("/panel/source/vkplay/")
+@login_required
+def vkplay_list():
+    return render_template("panel.html", current_user=current_user)

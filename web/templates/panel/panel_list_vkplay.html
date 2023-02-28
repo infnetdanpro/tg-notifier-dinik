@@ -2,17 +2,7 @@
 {% block content %}
 <!-- Begin Page Content -->
 <div class="container-fluid">
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        <br>
-        {% for category, message in messages %}
-            <div class="alert alert-{{ category }}" role="alert">
-                <center>{{ message }}</center>
-            </div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
-    <a class="btn btn-primary" href="/panel/bots/new/">Добавить бота</a>
+    <a class="btn btn-primary" href="/panel/bots/new/">Добавить источник: VKPlay.live</a>
 
     <!-- Page Heading -->
     <h1 class="h3 mb-1 text-gray-800">Ваши боты</h1>

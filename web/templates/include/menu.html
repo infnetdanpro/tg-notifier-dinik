@@ -14,7 +14,7 @@
 
     <!-- Nav Item - Dashboard -->
     <li class="nav-item">
-        <a class="nav-link" href="/panel/">
+        <a class="nav-link" href="{{ url_for('panel.index') }}">
             <i class="fas fa-fw fa-tachometer-alt"></i>
             <span>Главная</span></a>
     </li>
@@ -29,14 +29,19 @@
 
     <!-- Nav Item - Charts -->
     <li class="nav-item">
-        <a class="nav-link" href="/panel/bots/">
+        <a class="nav-link" href="{{ url_for('panel.list_bots') }}">
             <i class="fas fa-fw fa-chart-area"></i>
             <span>Список TG-ботов</span></a>
     </li>
     <li class="nav-item">
-        <a class="nav-link" href="/panel/sources/">
+        <a class="nav-link" href="{{ url_for('panel.twitch_list') }}">
             <i class="fas fa-fw fa-chart-area"></i>
-            <span>Список источников</span></a>
+            <span>Twitch-каналы</span></a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" href="{{ url_for('panel.vkplay_list') }}">
+            <i class="fas fa-fw fa-chart-area"></i>
+            <span>VKPlay-каналы</span></a>
     </li>
 
     <!-- Divider -->

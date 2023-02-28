@@ -3,18 +3,7 @@
 <!-- Begin Page Content -->
 
 <div class="container-fluid">
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        <br>
-        {% for category, message in messages %}
-            <div class="alert alert-{{ category }}" role="alert">
-                <center>{{ message }}</center>
-            </div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
-
-    <a class="btn btn-primary" href="/panel/twitch/new/">Добавить twitch</a>
+    <center><a class="btn btn-primary" href="{{ url_for('panel.new_twitch_source') }}">Добавить twitch</a></center>
     <!-- Page Heading -->
     <h1 class="h3 mb-1 text-gray-800">Ваши источники</h1>
 
