@@ -2,10 +2,10 @@
 {% block content %}
 <!-- Begin Page Content -->
 <div class="container-fluid">
-    <a class="btn btn-primary" href="/panel/bots/new/">Добавить источник: VKPlay.live</a>
+    <center><a class="btn btn-primary" href="{{ url_for('panel.new_vkplay_source') }}">Добавить VKPlay.live стрим</a></center>
 
     <!-- Page Heading -->
-    <h1 class="h3 mb-1 text-gray-800">Ваши боты</h1>
+    <h1 class="h3 mb-1 text-gray-800">Ваши источники</h1>
 
     <!-- DataTales Example -->
     <div class="card shadow mb-4">
@@ -24,7 +24,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% for bot in bots %}
+                        {% for vkplay_stream in vkplay_streams %}
                         <tr>
                             <td><a href="/panel/bots/edit/{{ bot.id }}/">{{ bot.name|truncate(24, True) }}</a></td>
                             <td>{{ bot.is_active }}</td>

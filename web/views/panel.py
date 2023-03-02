@@ -20,6 +20,19 @@ from web.views.forms.new_twitch import NewTwitchSource, allowed_file
 app = Blueprint("panel", __name__)
 
 
+def get_bots_choices():
+    bots = (
+        db_session.query(Bots)
+        .filter(Bots.author_id == current_user.id)
+        .order_by(Bots.created_at.desc())
+        .all()
+    )
+    bots_choices = []
+    for bot in bots:
+        bots_choices.append((bot.id, bot.name))
+    return bots_choices
+
+
 def sync_webhook_statuses():
     auth_resp = requests.post(
         f"https://id.twitch.tv/oauth2/token?client_id={config.APP_ID}&client_secret={config.APP_SECRET}&grant_type=client_credentials&scope="
@@ -31,7 +44,7 @@ def sync_webhook_statuses():
         "https://api.twitch.tv/helix/eventsub/subscriptions", headers=headers
     )
     if webhooks_response.status_code != 200:
-        print("Something happend webhook sync!")
+        print("Something happened with webhook sync!")
         return
 
     webhook_statuses = {}
@@ -55,6 +68,12 @@ def sync_webhook_statuses():
         )
     db_session.bulk_update_mappings(Webhooks, bulk_mappings)
     db_session.commit()
+
+
+async def get_broadcaster(channel_name: str):
+    twitch_service = await TwitchService(config.APP_ID, config.APP_SECRET)
+    broadcaster_user = await first(twitch_service.get_users(logins=channel_name))
+    return broadcaster_user
 
 
 @app.route("/panel/")
@@ -104,28 +123,13 @@ def twitch_list():
 def new_twitch_source():
     form = NewTwitchSource()
     form.bot.choices = get_bots_choices()
+    form_action = url_for("panel.new_twitch_source_post")
     return render_template(
-        "panel/panel_new_twitch.html", current_user=current_user, form=form
+        "panel/panel_form_twitch.html",
+        current_user=current_user,
+        form=form,
+        form_action=form_action,
     )
-
-
-def get_bots_choices():
-    bots = (
-        db_session.query(Bots)
-        .filter(Bots.author_id == current_user.id)
-        .order_by(Bots.created_at.desc())
-        .all()
-    )
-    bots_choices = []
-    for bot in bots:
-        bots_choices.append((bot.id, bot.name))
-    return bots_choices
-
-
-async def get_broadcaster(channel_name: str):
-    twitch_service = await TwitchService(config.APP_ID, config.APP_SECRET)
-    broadcaster_user = await first(twitch_service.get_users(logins=channel_name))
-    return broadcaster_user
 
 
 @app.route("/panel/twitch/new/", methods=["POST"])
@@ -133,10 +137,14 @@ async def get_broadcaster(channel_name: str):
 def new_twitch_source_post():
     form = NewTwitchSource(request.form)
     form.bot.choices = get_bots_choices()
+    form_action = url_for("panel.new_twitch_source_post")
     if not form.validate():
         return (
             render_template(
-                "panel/panel_new_twitch.html", current_user=current_user, form=form
+                "panel/panel_form_twitch.html",
+                current_user=current_user,
+                form=form,
+                form_action=form_action,
             ),
             422,
         )
@@ -150,7 +158,10 @@ def new_twitch_source_post():
         flash("Ваш broadcaster.id (twitch) не найден", category="danger")
         return (
             render_template(
-                "panel/panel_new_twitch.html", current_user=current_user, form=form
+                "panel/panel_form_twitch.html",
+                current_user=current_user,
+                form=form,
+                form_action=form_action,
             ),
             400,
         )
@@ -171,7 +182,10 @@ def new_twitch_source_post():
         db_session.rollback()
         return (
             render_template(
-                "panel/panel_new_twitch.html", current_user=current_user, form=form
+                "panel/panel_form_twitch.html",
+                current_user=current_user,
+                form=form,
+                form_action=form_action,
             ),
             400,
         )
@@ -219,9 +233,10 @@ def new_twitch_source_post():
                 )
                 return (
                     render_template(
-                        "panel/panel_new_twitch.html",
+                        "panel/panel_form_twitch.html",
                         current_user=current_user,
                         form=form,
+                        form_action=form_action,
                     ),
                     400,
                 )
@@ -242,11 +257,14 @@ def new_twitch_source_post():
         db_session.rollback()
         flash(message=f"Сохранение не прошло: {e}", category="danger")
         return render_template(
-            "panel/panel_new_twitch.html", current_user=current_user, form=form
+            "panel/panel_form_twitch.html",
+            current_user=current_user,
+            form=form,
+            form_action=form_action,
         )
 
     flash("Источник успешно добавлен", category="success")
-    return redirect(f"/panel/twitch/edit/{twitch.id}/")
+    return redirect(url_for("panel.twitch_list"))
 
 
 @app.route("/panel/twitch/edit/<int:twitch_id>/")
@@ -269,7 +287,7 @@ def edit_twitch_source(twitch_id: int):
     form.twitch_link.data = twitch.twitch_link
 
     return render_template(
-        "panel/panel_edit_sources.html",
+        "panel/panel_form_twitch.html",
         current_user=current_user,
         form=form,
         source={
@@ -296,7 +314,7 @@ def edit_twitch_source_post(twitch_id: int):
     if not form.validate():
         return (
             render_template(
-                "panel/panel_edit_sources.html",
+                "panel/panel_form_twitch.html",
                 current_user=current_user,
                 form=form,
                 source={
@@ -387,7 +405,7 @@ def edit_twitch_source_post(twitch_id: int):
 
     flash("Запись обновлена", category="success")
     return render_template(
-        "panel/panel_edit_sources.html",
+        "panel/panel_form_twitch.html",
         current_user=current_user,
         form=form,
         source={
@@ -419,8 +437,13 @@ def list_bots():
 @login_required
 def new_bots():
     form = NewBotForm()
+    form_action = url_for("panel.new_bots_post")
+
     return render_template(
-        "panel/panel_new_bots.html", current_user=current_user, form=form
+        "panel/panel_form_bots.html",
+        current_user=current_user,
+        form=form,
+        form_action=form_action,
     )
 
 
@@ -428,44 +451,51 @@ def new_bots():
 @login_required
 def new_bots_post():
     form = NewBotForm(request.form)
+    form_action = url_for("panel.new_bots_post")
     if not form.validate():
         return render_template(
-            "panel/panel_new_bots.html", current_user=current_user, form=form
+            "panel/panel_form_bots.html",
+            current_user=current_user,
+            form=form,
+            form_action=form_action,
         )
-
     if tgbot := db_session.query(Bots).filter(Bots.tg_key == form.bot_key.data).first():
         flash(f"Бот с этим ключом уже создан под ID: {tgbot.id}")
         return (
             render_template(
-                "panel/panel_new_bots.html", current_user=current_user, form=form
+                "panel/panel_form_bots.html",
+                current_user=current_user,
+                form=form,
+                form_action=form_action,
             ),
             409,
         )
-
     new_tgbot = Bots(
         name=form.bot_name.data,
         tg_key=form.bot_key.data,
         channels=form.bot_channels.data.split(","),
         author_id=current_user.id,
     )
-    db_session.add(new_tgbot)
+
     try:
+        db_session.add(new_tgbot)
         db_session.commit()
+        flash("Запись создана", category="success")
+        print(4)
+        return redirect(url_for("panel.list_bots"))
     except Exception as e:
         print(e)
         db_session.rollback()
         flash("При сохранении возникла ошибка, напишите админу", category="danger")
         return (
             render_template(
-                "panel/panel_new_bots.html", current_user=current_user, form=form
+                "panel/panel_form_bots.html",
+                current_user=current_user,
+                form=form,
+                form_action=form_action,
             ),
             500,
         )
-
-    flash("Запись создана", category="success")
-    return render_template(
-        "panel/panel_new_bots.html", current_user=current_user, form=form
-    )
 
 
 @app.route("/panel/bots/edit/<int:bot_id>/")
@@ -476,12 +506,17 @@ def edit_bots(bot_id: int):
         flash("Запись не найдена", category="danger")
         return redirect(url_for("panel.list_bots"))
 
+    form_action = url_for("panel.edit_bots_post", bot_id=bot.id)
     form = NewBotForm()
     form.bot_name.data = bot.name
     form.bot_channels.data = ",".join(bot.channels) if bot.channels else ""
     form.bot_key.data = bot.tg_key
     return render_template(
-        "panel/panel_edit_bots.html", current_user=current_user, bot=bot, form=form
+        "panel/panel_form_bots.html",
+        current_user=current_user,
+        bot=bot,
+        form=form,
+        form_action=form_action,
     )
 
 
@@ -493,14 +528,16 @@ def edit_bots_post(bot_id: int):
         flash("Запись не найдена", category="danger")
         return redirect("panel.list_bots")
 
+    form_action = url_for("panel.edit_bots_post", bot_id=bot.id)
     form = NewBotForm(request.form)
     if not form.validate():
         return (
             render_template(
-                "panel/panel_edit_bots.html",
+                "panel/panel_form_bots.html",
                 current_user=current_user,
                 bot=bot,
                 form=form,
+                form_action=form_action,
             ),
             422,
         )
@@ -513,7 +550,11 @@ def edit_bots_post(bot_id: int):
 
     flash("Запись обновлена", category="success")
     return render_template(
-        "panel/panel_edit_bots.html", current_user=current_user, bot=bot, form=form
+        "panel/panel_form_bots.html",
+        current_user=current_user,
+        bot=bot,
+        form=form,
+        form_action=form_action,
     )
 
 
@@ -611,4 +652,10 @@ def deactivate_webhook():
 @app.route("/panel/source/vkplay/")
 @login_required
 def vkplay_list():
-    return render_template("panel.html", current_user=current_user)
+    return render_template("panel/panel_list_vkplay.html", current_user=current_user)
+
+
+@app.route("/panel/source/vkplay/new/")
+@login_required
+def new_vkplay_source():
+    return render_template("panel/panel_form_vkplay.html", current_user=current_user)

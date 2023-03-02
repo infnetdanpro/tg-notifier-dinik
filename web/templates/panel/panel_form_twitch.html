@@ -4,34 +4,13 @@
 <div class="container-fluid">
 
     <!-- Page Heading -->
-    <h1 class="h3 mb-1 text-gray-800">Добавить источник: Twitch</h1>
-
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        <br>
-        {% for category, message in messages %}
-            <div class="alert alert-{{ category }}" role="alert">
-                <center>{{ message }}</center>
-            </div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
-    {% if form.errors %}
-        <br>
-        {% for field, errors in form.errors.items() %}
-            {% for error in errors %}
-            <div class="alert alert-danger" role="alert">
-                <center>{{ field }}: {{ error }}</center>
-            </div>
-            {% endfor %}
-        {% endfor %}
-    {% endif %}
+    <h1 class="h3 mb-1 text-gray-800">{% if is_new %}Добавление источника{% else %}Редактирование источника{% endif %}: Twitch.tv</h1>
     <div class="card-body p-0">
         <!-- Nested Row within Card Body -->
         <div class="row">
             <div class="col-lg-6">
                 <div class="p-5">
-                   <form method="POST" action="/panel/twitch/new/" enctype=multipart/form-data>
+                   <form method="POST" action="{{ form_action }}" enctype="multipart/form-data">
                     <div class="mb-3">
                         <label for="exampleFormControlInput1">Имя канала</label>
                         {{ form.twitch_channel_name }}
@@ -55,11 +34,20 @@
                     <div class="mb-3">
                         <label for="exampleFormControlImage">Картинка</label>
                         <input type="file" id="exampleFormControlImage" name="twitch_action_image" accept="image/*">
+                        {% if source and source.image %}
+                            <img src="/{{ source.image.attachment_filename }}" width="200px">
+                        {% endif %}
                     </div>
                     <div class="mb-3">
                         <label for="exampleFormControlTextarea1">Текст для пересылки боту. Доступные переменные: {{ '{{ username }}' }}, {{ '{{ twitch_link }}' }}</label>
                         {{ form.twitch_action_text }}
                     </div>
+                    {% if source %}
+                    <div class="mb-3">
+                        <label for="flexCheckDefault">Активно</label>
+                        <input class="form-control" id="flexCheckDefault" type="checkbox" name="is_active" value="is_active" {% if source.is_active%}checked{% endif %}>
+                    </div>
+                    {% endif %}
                        <br>
                     <div class="mb-3"><button class="btn btn-primary" type="submit">Сохранить</button></div>
                 </form>
