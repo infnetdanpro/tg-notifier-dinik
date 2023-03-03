@@ -24,7 +24,7 @@
                         <label for="exampleFormControlInput3">Список каналов (Пример: -1001499434368,-1022827366251)</label>
                         {{ form.bot_channels }}
                     </div>
-                    {% if bot %}}
+                    {% if bot %}
                     <div class="mb-3">
                         <label for="flexCheckDefault">Активно</label>
                         <input class="form-control" id="flexCheckDefault" type="checkbox" name="is_active" value="is_active" {% if bot and bot.is_active %}checked{% endif %}>

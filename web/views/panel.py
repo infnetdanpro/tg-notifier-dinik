@@ -1,21 +1,28 @@
 import os
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 import requests
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from twitchAPI.helper import first
 from twitchAPI.twitch import Twitch as TwitchService
+from werkzeug.datastructures import FileStorage
 
 from config import config
 from db.pg import db_session
 from models.bots import Bots
-from models.connectors import Twitch, TwitchActions, TwitchActionsAttachments
+from models.connectors import (
+    Twitch,
+    TwitchActions,
+    TwitchActionsAttachments,
+    VkPlayLive,
+)
 from models.webhooks import Webhooks
 from web.shared_loop import loop
 from web.views.forms.bot import NewBotForm
 from web.views.forms.new_twitch import NewTwitchSource, allowed_file
+from web.views.forms.vkplay import VKPlayForm
 
 app = Blueprint("panel", __name__)
 
@@ -76,6 +83,33 @@ async def get_broadcaster(channel_name: str):
     return broadcaster_user
 
 
+def save_file(file: FileStorage, filename: str) -> Optional[str]:
+    if file and allowed_file(file.filename):
+        filename += "." + file.filename.split(".")[-1]
+        dt = datetime.utcnow().date()
+        user_path = os.path.join(
+            config.PROJECT_PATH,
+            os.path.join(*config.UPLOAD_FOLDER),
+            str(dt.year),
+            str(dt.month),
+            str(dt.day),
+            str(current_user.id),
+        )
+        if not os.path.exists(user_path):
+            os.makedirs(user_path)
+        split = (
+            *config.UPLOAD_FOLDER[1:],
+            str(dt.year),
+            str(dt.month),
+            str(dt.day),
+            str(current_user.id),
+            filename,
+        )
+        file.save(os.path.join(user_path, filename))
+        filename = "/".join(split)
+        return filename
+
+
 @app.route("/panel/")
 @login_required
 def index():
@@ -129,6 +163,7 @@ def new_twitch_source():
         current_user=current_user,
         form=form,
         form_action=form_action,
+        is_new=True,
     )
 
 
@@ -145,6 +180,7 @@ def new_twitch_source_post():
                 current_user=current_user,
                 form=form,
                 form_action=form_action,
+                is_new=True,
             ),
             422,
         )
@@ -162,6 +198,7 @@ def new_twitch_source_post():
                 current_user=current_user,
                 form=form,
                 form_action=form_action,
+                is_new=True,
             ),
             400,
         )
@@ -203,43 +240,9 @@ def new_twitch_source_post():
         file = request.files["twitch_action_image"]
         # if user does not select file, browser also
         # submit an empty part without filename
-        if file and allowed_file(file.filename):
-            filename = str(twitch.id)
-            dt = datetime.utcnow().date()
-            user_path = os.path.join(
-                config.PROJECT_PATH,
-                os.path.join(*config.UPLOAD_FOLDER),
-                str(dt.year),
-                str(dt.month),
-                str(dt.day),
-                str(current_user.id),
-            )
-            if not os.path.exists(user_path):
-                os.makedirs(user_path)
-            split = (
-                *config.UPLOAD_FOLDER[1:],
-                str(dt.year),
-                str(dt.month),
-                str(dt.day),
-                str(current_user.id),
-                filename,
-            )
-            file.save(os.path.join(user_path, filename))
-            filename = "/".join(split)
-        else:
-            if file.filename != "":
-                flash(
-                    "Разрешено загружать только изображения в формате: png/jpg/jpeg/gif"
-                )
-                return (
-                    render_template(
-                        "panel/panel_form_twitch.html",
-                        current_user=current_user,
-                        form=form,
-                        form_action=form_action,
-                    ),
-                    400,
-                )
+        filename = save_file(file=file, filename=str(str(twitch.id)))
+        if not filename:
+            flash("Изображение не загружено", category="warning")
 
     if filename:
         # add attachments
@@ -261,6 +264,7 @@ def new_twitch_source_post():
             current_user=current_user,
             form=form,
             form_action=form_action,
+            is_new=True,
         )
 
     flash("Источник успешно добавлен", category="success")
@@ -346,29 +350,8 @@ def edit_twitch_source_post(twitch_id: int):
             file = request.files["twitch_action_image"]
             # if user does not select file, browser also
             # submit an empty part without filename
-            if file and allowed_file(file.filename):
-                filename = str(twitch.id)
-                dt = datetime.utcnow().date()
-                user_path = os.path.join(
-                    config.PROJECT_PATH,
-                    os.path.join(*config.UPLOAD_FOLDER),
-                    str(dt.year),
-                    str(dt.month),
-                    str(dt.day),
-                    str(current_user.id),
-                )
-                if not os.path.exists(user_path):
-                    os.makedirs(user_path)
-                split = (
-                    *config.UPLOAD_FOLDER[1:],
-                    str(dt.year),
-                    str(dt.month),
-                    str(dt.day),
-                    str(current_user.id),
-                    filename,
-                )
-                file.save(os.path.join(user_path, filename))
-                filename = "/".join(split)
+            filename = save_file(file=file, filename=str(twitch.id))
+            if filename:
                 twitch_attachment = (
                     db_session.query(TwitchActionsAttachments)
                     .filter(
@@ -388,12 +371,6 @@ def edit_twitch_source_post(twitch_id: int):
                     )
                     db_session.add(twitch_attachment)
                     db_session.commit()
-
-            else:
-                if file.filename != "":
-                    flash(
-                        "Разрешено загружать только изображения в формате: png/jpg/jpeg/gif"
-                    )
 
     except Exception as e:
         print(e)
@@ -652,10 +629,193 @@ def deactivate_webhook():
 @app.route("/panel/source/vkplay/")
 @login_required
 def vkplay_list():
-    return render_template("panel/panel_list_vkplay.html", current_user=current_user)
+    limit = request.args.get("limit") or 0
+    offset = request.args.get("offset") or 0
+    result = db_session.query(VkPlayLive).filter(
+        VkPlayLive.author_id == current_user.id
+    )
+
+    if limit:
+        result = result.limit(limit)
+    if offset:
+        result = result.offset(offset)
+    result = result.order_by(VkPlayLive.id.desc())
+    return render_template(
+        "panel/panel_list_vkplay.html", current_user=current_user, vkplay_streams=result
+    )
 
 
 @app.route("/panel/source/vkplay/new/")
 @login_required
 def new_vkplay_source():
-    return render_template("panel/panel_form_vkplay.html", current_user=current_user)
+    form = VKPlayForm()
+    form.bot.choices = get_bots_choices()
+    form_action = url_for("panel.new_vkplay_source_post")
+    return render_template(
+        "panel/panel_form_vkplay.html",
+        current_user=current_user,
+        form=form,
+        form_action=form_action,
+        is_new=True,
+    )
+
+
+@app.route("/panel/source/vkplay/new/", methods=["POST"])
+@login_required
+def new_vkplay_source_post():
+    form = VKPlayForm(request.form)
+    form.bot.choices = get_bots_choices()
+    form_action = url_for("panel.new_vkplay_source_post")
+
+    if not form.channel_link.data.startswith("https://vkplay.live/"):
+        flash(
+            "Ссылка на канал должна начинаться https://vkplay.live/}", category="danger"
+        )
+        return render_template(
+            "panel/panel_form_vkplay.html",
+            current_user=current_user,
+            form=form,
+            form_action=form_action,
+            is_new=True,
+        )
+
+    if not form.validate():
+        return render_template(
+            "panel/panel_form_vkplay.html",
+            current_user=current_user,
+            form=form,
+            form_action=form_action,
+            is_new=True,
+        )
+
+    action_image_filename = None
+    if "action_image" in request.files:
+        file = request.files["action_image"]
+        if file.filename != "":
+            action_image_filename = save_file(
+                file=file, filename="vkplay_" + str(current_user.id)
+            )
+            if not action_image_filename:
+                flash("Изображение не загружено", category="warning")
+
+    vkplay = VkPlayLive(
+        channel_name=form.channel_name.data,
+        author_id=current_user.id,
+        channel_link=form.channel_link.data,
+        tgbot_id=form.bot.data,
+        action_type=form.action_type.data,
+        action_text=form.action_text.data,
+        action_image=action_image_filename,
+    )
+    try:
+        db_session.add(vkplay)
+        db_session.commit()
+    except Exception as e:
+        print(e)
+        db_session.rollback()
+        flash("Запись не создана, обратитесь к администратору", category="danger")
+        return (
+            render_template(
+                "panel/panel_form_vkplay.html",
+                current_user=current_user,
+                form=form,
+                form_action=form_action,
+                is_new=True,
+            ),
+            400,
+        )
+
+    flash("Источник создан", category="success")
+    return redirect(url_for("panel.vkplay_list"))
+
+
+@app.route("/panel/source/vkplay/edit/<int:vkplay_id>/")
+@login_required
+def vkplay_edit(vkplay_id: int):
+    vkplay: VkPlayLive = (
+        db_session.query(VkPlayLive).filter(VkPlayLive.id == vkplay_id).first()
+    )
+    if not vkplay:
+        flash("Стрим не найден", category="danger")
+        return redirect(url_for("panel.vkplay_list"))
+
+    form = VKPlayForm()
+    form.bot.choices = get_bots_choices()
+    form.bot.default = vkplay.tgbot_id
+    form.process()
+
+    form.channel_name.data = vkplay.channel_name
+    form.channel_link.data = vkplay.channel_link
+    form.action_type.data = vkplay.action_type
+    form.action_text.data = vkplay.action_text
+    form.is_active.data = vkplay.is_active
+    form_action = url_for("panel.vkplay_edit_post", vkplay_id=vkplay.id)
+    return render_template(
+        "panel/panel_form_vkplay.html",
+        current_user=current_user,
+        form=form,
+        form_action=form_action,
+        source=vkplay,
+    )
+
+
+@app.route("/panel/source/vkplay/edit/<int:vkplay_id>/", methods=["POST"])
+@login_required
+def vkplay_edit_post(vkplay_id: int):
+    vkplay: VkPlayLive = (
+        db_session.query(VkPlayLive).filter(VkPlayLive.id == vkplay_id).first()
+    )
+    if not vkplay:
+        flash("Стрим не найден", category="danger")
+        return redirect(url_for("panel.vkplay_list"))
+
+    form = VKPlayForm(request.form)
+    form.bot.choices = get_bots_choices()
+    form_action = url_for("panel.vkplay_edit_post", vkplay_id=vkplay.id)
+
+    if not form.validate():
+        return render_template(
+            "panel/panel_form_vkplay.html",
+            current_user=current_user,
+            form=form,
+            form_action=form_action,
+            source=vkplay,
+        )
+
+    if "action_image" in request.files:
+        file = request.files["action_image"]
+        if file.filename != "":
+            action_image_filename = save_file(
+                file=file, filename="vkplay_" + str(current_user.id)
+            )
+            if not action_image_filename:
+                flash("Изображение не загружено", category="warning")
+            else:
+                vkplay.action_image = action_image_filename
+
+    vkplay.channel_name = form.channel_name.data
+    vkplay.author_id = current_user.id
+    vkplay.channel_link = form.channel_link.data
+    vkplay.tgbot_id = form.bot.data
+    vkplay.action_type = form.action_type.data
+    vkplay.action_text = form.action_text.data
+    vkplay.is_active = form.is_active.data
+
+    try:
+        db_session.commit()
+    except Exception as e:
+        print(e)
+        db_session.rollback()
+        flash("Запись не обновлена, обратитесь к администратору", category="danger")
+        return (
+            render_template(
+                "panel/panel_form_vkplay.html",
+                current_user=current_user,
+                form=form,
+                form_action=form_action,
+                is_new=True,
+            ),
+            400,
+        )
+    flash("Запись обновлена", category="success")
+    return redirect(url_for("panel.vkplay_list"))

@@ -20,5 +20,8 @@ class Config:
     # client secret
     APP_SECRET = "re91qzx97uyb7gpbnprnz0bu9qj4j1"
 
+    # sleeps
+    app_sleep = 10
+
 
 config = Config()

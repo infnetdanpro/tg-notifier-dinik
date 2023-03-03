@@ -20,16 +20,14 @@
                             <th>Имя</th>
                             <th>Активен</th>
                             <th>Создан</th>
-                            <th>Логи</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for vkplay_stream in vkplay_streams %}
                         <tr>
-                            <td><a href="/panel/bots/edit/{{ bot.id }}/">{{ bot.name|truncate(24, True) }}</a></td>
-                            <td>{{ bot.is_active }}</td>
-                            <td>{{ bot.created_at }}</td>
-                            <td>(available in future)</td>
+                            <td><a href="{{ url_for('panel.vkplay_edit', vkplay_id=vkplay_stream.id) }}">{{ vkplay_stream.channel_name|truncate(24, True) }}</a></td>
+                            <td>{{ vkplay_stream.is_active }}</td>
+                            <td>{{ vkplay_stream.created_at }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>

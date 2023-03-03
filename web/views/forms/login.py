@@ -1,9 +1,9 @@
 from wtforms import EmailField, Form, PasswordField
-from wtforms.validators import DataRequired, InputRequired
+from wtforms.validators import InputRequired
 
 
 class LoginForm(Form):
-    email = EmailField("Email", validators=[DataRequired()])
+    email = EmailField("Email", validators=[InputRequired()])
     password = PasswordField(
         "Password",
         [InputRequired()],
