@@ -21,6 +21,8 @@ def partition(l, n):
 
 
 async def is_stream_is_live(stream_username: str) -> bool:
+    if not stream_username:
+        return False
     async with httpx.AsyncClient() as client:
         timeout = Timeout(timeout=59)
         resp = await client.get(
@@ -140,6 +142,8 @@ def main():
 
         data = []
         for channel_link, is_live_now in streams_all:
+            if not channel_link.startswith("https://vkplay.live/"):
+                continue
             channel_stream_name = channel_link.split(".")[1].split("/")[1]
             data.append((channel_stream_name, is_live_now))
 
