@@ -18,6 +18,7 @@
                     <thead>
                         <tr>
                             <th>Имя</th>
+                            <th>Live Now</th>
                             <th>Активен</th>
                             <th>Создан</th>
                         </tr>
@@ -26,6 +27,7 @@
                         {% for vkplay_stream in vkplay_streams %}
                         <tr>
                             <td><a href="{{ url_for('panel.vkplay_edit', vkplay_id=vkplay_stream.id) }}">{{ vkplay_stream.channel_name|truncate(24, True) }}</a></td>
+                            <td>{{ vkplay_stream.is_live_now }}</td>
                             <td>{{ vkplay_stream.is_active }}</td>
                             <td>{{ vkplay_stream.created_at }}</td>
                         </tr>

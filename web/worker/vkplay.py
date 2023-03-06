@@ -34,7 +34,8 @@ async def is_stream_is_live(stream_username: str) -> bool:
         )
         if resp.status_code != 200:
             logger.exception(
-                "Кажется нас забанили или сервис недоступен: %s. Весь респ: %s",
+                "[%s] Кажется нас забанили или сервис недоступен: %s. Весь респ: %s",
+                stream_username,
                 resp.status_code,
                 resp.text,
             )

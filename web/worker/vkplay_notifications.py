@@ -78,6 +78,7 @@ def main():
                         json=payload,
                     )
                 if not resp.status_code == 200:
+                    import pdb; pdb.set_trace()
                     logger.exception(
                         "Кажется нас забанили или недоступен ТГ-сервер для бота: %s. Ответ: %s",
                         resp.status_code,

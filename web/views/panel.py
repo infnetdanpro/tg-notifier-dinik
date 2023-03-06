@@ -458,7 +458,6 @@ def new_bots_post():
         db_session.add(new_tgbot)
         db_session.commit()
         flash("Запись создана", category="success")
-        print(4)
         return redirect(url_for("panel.list_bots"))
     except Exception as e:
         print(e)
