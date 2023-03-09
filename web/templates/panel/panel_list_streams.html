@@ -2,7 +2,12 @@
 {% block content %}
 <!-- Begin Page Content -->
 <div class="container-fluid">
-    <center><a class="btn btn-primary" href="{{ url_for('panel.new_vkplay_source') }}">Добавить VKPlay.live стрим</a></center>
+    {% if source_type == 'vkplay' %}
+        {% set new_url = url_for('panel.new_vkplay_source') %}
+    {% elif source_type == 'goodgame' %}
+        {% set new_url = url_for('panel.new_goodgame_source') %}
+    {% endif %}
+    <center><a class="btn btn-primary" href="{{ new_url }}">Добавить {{ source_name }} стрим</a></center>
 
     <!-- Page Heading -->
     <h1 class="h3 mb-1 text-gray-800">Ваши источники</h1>
@@ -24,12 +29,17 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% for vkplay_stream in vkplay_streams %}
+                        {% for source in sources %}
+                        {% if source_type == 'vkplay' %}
+                            {% set edit_url = url_for('panel.vkplay_edit', vkplay_id=source.id) %}
+                        {% elif source_type == 'goodgame' %}
+                            {% set edit_url = url_for('panel.edit_goodgame_source', source_id=source.id) %}
+                        {% endif %}
                         <tr>
-                            <td><a href="{{ url_for('panel.vkplay_edit', vkplay_id=vkplay_stream.id) }}">{{ vkplay_stream.channel_name|truncate(24, True) }}</a></td>
-                            <td>{{ vkplay_stream.is_live_now }}</td>
-                            <td>{{ vkplay_stream.is_active }}</td>
-                            <td>{{ vkplay_stream.created_at }}</td>
+                            <td><a href="{{ edit_url }}">{{ source.channel_name|truncate(24, True) }}</a></td>
+                            <td>{{ source.is_live_now }}</td>
+                            <td>{{ source.is_active }}</td>
+                            <td>{{ source.created_at }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>

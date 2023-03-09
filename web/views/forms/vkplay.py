@@ -1,23 +1,16 @@
-from wtforms import (
-    BooleanField,
-    Form,
-    IntegerField,
-    SelectField,
-    StringField,
-    TextAreaField,
-)
-from wtforms.validators import DataRequired, InputRequired
+from wtforms import BooleanField, Form, SelectField, StringField, TextAreaField
+from wtforms.validators import DataRequired, InputRequired, Length
 
 
-class VKPlayForm(Form):
+class BasicStreamForm(Form):
     channel_name = StringField(
         "Имя канала",
-        validators=[InputRequired("Поле обязательно")],
+        validators=[InputRequired("Поле обязательно"), Length(min=1, max=64)],
         render_kw={"class": "form-control", "id": "controlChannelName"},
     )
     channel_link = StringField(
         "Ссылка на канал",
-        validators=[InputRequired("Поле обязательно")],
+        validators=[InputRequired("Поле обязательно"), Length(min=1, max=128)],
         render_kw={"class": "form-control", "id": "controlChannelLink"},
     )
     action_type = SelectField(
@@ -31,7 +24,7 @@ class VKPlayForm(Form):
     action_text = TextAreaField(
         "Текст для уведомления",
         default="{{ channel_name }} начал стрим! Заходи: {{ channel_link }}!",
-        validators=[DataRequired()],
+        validators=[DataRequired(), Length(min=1, max=512)],
         render_kw={
             "class": "form-control",
             "id": "controlChannelActionText",

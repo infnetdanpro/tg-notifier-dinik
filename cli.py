@@ -31,6 +31,13 @@ def vkplay_send_notifications():
     main()
 
 
+@worker.command()
+def goodgame():
+    from web.worker.goodgame import main
+
+    main()
+
+
 entire_group.add_command(worker)
 
 

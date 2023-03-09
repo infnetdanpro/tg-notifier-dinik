@@ -1,18 +1,14 @@
-import os
-from datetime import datetime
-from typing import List, Optional
+from typing import List
 
-import requests
+import httpx
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
-from twitchAPI.helper import first
-from twitchAPI.twitch import Twitch as TwitchService
-from werkzeug.datastructures import FileStorage
 
 from config import config
 from db.pg import db_session
 from models.bots import Bots
 from models.connectors import (
+    GoodgameStreams,
     Twitch,
     TwitchActions,
     TwitchActionsAttachments,
@@ -20,94 +16,12 @@ from models.connectors import (
 )
 from models.webhooks import Webhooks
 from web.shared_loop import loop
+from web.views import tools
 from web.views.forms.bot import NewBotForm
-from web.views.forms.new_twitch import NewTwitchSource, allowed_file
-from web.views.forms.vkplay import VKPlayForm
+from web.views.forms.new_twitch import NewTwitchSource
+from web.views.forms.vkplay import BasicStreamForm
 
 app = Blueprint("panel", __name__)
-
-
-def get_bots_choices():
-    bots = (
-        db_session.query(Bots)
-        .filter(Bots.author_id == current_user.id)
-        .order_by(Bots.created_at.desc())
-        .all()
-    )
-    bots_choices = []
-    for bot in bots:
-        bots_choices.append((bot.id, bot.name))
-    return bots_choices
-
-
-def sync_webhook_statuses():
-    auth_resp = requests.post(
-        f"https://id.twitch.tv/oauth2/token?client_id={config.APP_ID}&client_secret={config.APP_SECRET}&grant_type=client_credentials&scope="
-    )
-    bearer = auth_resp.json()["access_token"]
-    headers = {"Client-ID": config.APP_ID, "Authorization": f"Bearer {bearer}"}
-
-    webhooks_response = requests.get(
-        "https://api.twitch.tv/helix/eventsub/subscriptions", headers=headers
-    )
-    if webhooks_response.status_code != 200:
-        print("Something happened with webhook sync!")
-        return
-
-    webhook_statuses = {}
-    for row in webhooks_response.json()["data"]:
-        webhook_statuses[row["id"]] = row["status"]
-
-    webhook_ids = list(webhook_statuses.keys())
-    webhooks_db = (
-        db_session.query(Webhooks)
-        .filter(Webhooks.twitch_webhook_id.in_(webhook_ids))
-        .all()
-    )
-
-    bulk_mappings = []
-    for webhook_db in webhooks_db:
-        bulk_mappings.append(
-            {
-                "id": webhook_db.id,
-                "twitch_webhook_status": webhook_statuses[webhook_db.twitch_webhook_id],
-            }
-        )
-    db_session.bulk_update_mappings(Webhooks, bulk_mappings)
-    db_session.commit()
-
-
-async def get_broadcaster(channel_name: str):
-    twitch_service = await TwitchService(config.APP_ID, config.APP_SECRET)
-    broadcaster_user = await first(twitch_service.get_users(logins=channel_name))
-    return broadcaster_user
-
-
-def save_file(file: FileStorage, filename: str) -> Optional[str]:
-    if file and allowed_file(file.filename):
-        filename += "." + file.filename.split(".")[-1]
-        dt = datetime.utcnow().date()
-        user_path = os.path.join(
-            config.PROJECT_PATH,
-            os.path.join(*config.UPLOAD_FOLDER),
-            str(dt.year),
-            str(dt.month),
-            str(dt.day),
-            str(current_user.id),
-        )
-        if not os.path.exists(user_path):
-            os.makedirs(user_path)
-        split = (
-            *config.UPLOAD_FOLDER[1:],
-            str(dt.year),
-            str(dt.month),
-            str(dt.day),
-            str(current_user.id),
-            filename,
-        )
-        file.save(os.path.join(user_path, filename))
-        filename = "/".join(split)
-        return filename
 
 
 @app.route("/panel/")
@@ -119,14 +33,22 @@ def index():
 @app.route("/panel/source/twitch/")
 @login_required
 def twitch_list():
-    twitch_sources: List[Twitch] = (
+    limit = request.args.get("limit") or 100
+    offset = request.args.get("offset") or 0
+    query = (
         db_session.query(Twitch)
         .filter(Twitch.author_id == current_user.id)
         .order_by(Twitch.created_at.desc())
-        .all()
     )
+    if limit:
+        query = query.limit(limit)
+    if offset:
+        query = query.offset(offset)
+
+    twitch_sources: List[Twitch] = query.all()
+
     if twitch_sources:
-        sync_webhook_statuses()
+        tools.sync_webhook_statuses()
 
     webhook_statuses = {}
     for twitch in twitch_sources:
@@ -156,7 +78,7 @@ def twitch_list():
 @login_required
 def new_twitch_source():
     form = NewTwitchSource()
-    form.bot.choices = get_bots_choices()
+    form.bot.choices = tools.get_bots_choices(current_user_id=current_user.id)
     form_action = url_for("panel.new_twitch_source_post")
     return render_template(
         "panel/panel_form_twitch.html",
@@ -171,7 +93,7 @@ def new_twitch_source():
 @login_required
 def new_twitch_source_post():
     form = NewTwitchSource(request.form)
-    form.bot.choices = get_bots_choices()
+    form.bot.choices = tools.get_bots_choices(current_user_id=current_user.id)
     form_action = url_for("panel.new_twitch_source_post")
     if not form.validate():
         return (
@@ -188,7 +110,7 @@ def new_twitch_source_post():
     filename = None
 
     broadcaster = loop.run_until_complete(
-        get_broadcaster(form.twitch_channel_name.data)
+        tools.get_broadcaster(form.twitch_channel_name.data)
     )
     if not broadcaster:
         flash("Ваш broadcaster.id (twitch) не найден", category="danger")
@@ -240,7 +162,7 @@ def new_twitch_source_post():
         file = request.files["twitch_action_image"]
         # if user does not select file, browser also
         # submit an empty part without filename
-        filename = save_file(file=file, filename=str(str(twitch.id)))
+        filename = tools.save_file(file=file, filename=str(str(twitch.id)))
         if not filename:
             flash("Изображение не загружено", category="warning")
 
@@ -274,13 +196,18 @@ def new_twitch_source_post():
 @app.route("/panel/twitch/edit/<int:twitch_id>/")
 @login_required
 def edit_twitch_source(twitch_id: int):
-    twitch: Twitch = db_session.query(Twitch).filter(Twitch.id == twitch_id).first()
+    twitch: Twitch = (
+        db_session.query(Twitch)
+        .filter(Twitch.id == twitch_id)
+        .filiter(Twitch.author_id == current_user.id)
+        .first()
+    )
     if not twitch:
         flash("Запись не найдена", category="danger")
         return redirect(url_for("panel.twitch_list"))
 
     form = NewTwitchSource()
-    form.bot.choices = get_bots_choices()
+    form.bot.choices = tools.get_bots_choices(current_user_id=current_user.id)
     form.bot.default = twitch.tgbot_id
     form.process()
 
@@ -308,13 +235,17 @@ def edit_twitch_source(twitch_id: int):
 @app.route("/panel/twitch/edit/<int:twitch_id>/", methods=["POST"])
 @login_required
 def edit_twitch_source_post(twitch_id: int):
-    twitch: Twitch = db_session.query(Twitch).filter(Twitch.id == twitch_id).first()
+    twitch: Twitch = (
+        db_session.query(Twitch)
+        .filter(Twitch.id == twitch_id, Twitch.author_id == current_user.id)
+        .first()
+    )
     if not twitch:
         flash("Запись не найдена", category="danger")
         return redirect(f"/panel/twitch/edit/{twitch_id}/")
 
     form = NewTwitchSource(request.form)
-    form.bot.choices = get_bots_choices()
+    form.bot.choices = tools.get_bots_choices(current_user_id=current_user.id)
     if not form.validate():
         return (
             render_template(
@@ -335,7 +266,7 @@ def edit_twitch_source_post(twitch_id: int):
     try:
         if twitch.channel_name != form.twitch_channel_name.data:
             twitch.broadcaster_id = loop.run_until_complete(
-                get_broadcaster(form.twitch_channel_name.data)
+                tools.get_broadcaster(form.twitch_channel_name.data)
             ).id
         twitch.channel_name = form.twitch_channel_name.data
         twitch.is_active = True if request.form.get("is_active") else False
@@ -350,7 +281,7 @@ def edit_twitch_source_post(twitch_id: int):
             file = request.files["twitch_action_image"]
             # if user does not select file, browser also
             # submit an empty part without filename
-            filename = save_file(file=file, filename=str(twitch.id))
+            filename = tools.save_file(file=file, filename=str(twitch.id))
             if filename:
                 twitch_attachment = (
                     db_session.query(TwitchActionsAttachments)
@@ -477,7 +408,11 @@ def new_bots_post():
 @app.route("/panel/bots/edit/<int:bot_id>/")
 @login_required
 def edit_bots(bot_id: int):
-    bot: Bots = db_session.query(Bots).filter(Bots.id == bot_id).first()
+    bot: Bots = (
+        db_session.query(Bots)
+        .filter(Bots.id == bot_id, Bots.author_id == current_user.id)
+        .first()
+    )
     if not bot:
         flash("Запись не найдена", category="danger")
         return redirect(url_for("panel.list_bots"))
@@ -499,7 +434,11 @@ def edit_bots(bot_id: int):
 @app.route("/panel/bots/edit/<int:bot_id>/", methods=["POST"])
 @login_required
 def edit_bots_post(bot_id: int):
-    bot: Bots = db_session.query(Bots).filter(Bots.id == bot_id).first()
+    bot: Bots = (
+        db_session.query(Bots)
+        .filter(Bots.id == bot_id, Bots.author_id == current_user.id)
+        .first()
+    )
     if not bot:
         flash("Запись не найдена", category="danger")
         return redirect("panel.list_bots")
@@ -550,8 +489,14 @@ def activate_webhook():
         return redirect(url_for("panel.twitch_list"))
 
     # get auth bearer token header
-    auth_resp = requests.post(
-        f"https://id.twitch.tv/oauth2/token?client_id={config.APP_ID}&client_secret={config.APP_SECRET}&grant_type=client_credentials&scope="
+    auth_resp = httpx.post(
+        f"https://id.twitch.tv/oauth2/token",
+        params={
+            "client_id": config.APP_ID,
+            "client_secret": config.APP_SECRET,
+            "grant_type": "client_credentials",
+            "scope": "",
+        },
     )
     bearer = auth_resp.json()["access_token"]
     headers = {"Client-ID": config.APP_ID, "Authorization": f"Bearer {bearer}"}
@@ -566,7 +511,7 @@ def activate_webhook():
         },
     }
 
-    r = requests.post(
+    r = httpx.post(
         url="https://api.twitch.tv/helix/eventsub/subscriptions",
         headers=headers,
         json=data,
@@ -605,12 +550,18 @@ def deactivate_webhook():
         flash("Деактивация неуспешна, вебхук не найден", category="danger")
         return redirect(url_for("panel.twitch_list"))
     # get enabled webhooks
-    auth_resp = requests.post(
-        f"https://id.twitch.tv/oauth2/token?client_id={config.APP_ID}&client_secret={config.APP_SECRET}&grant_type=client_credentials&scope="
+    auth_resp = httpx.post(
+        "https://id.twitch.tv/oauth2/token",
+        params={
+            "client_id": config.APP_ID,
+            "client_secret": config.APP_SECRET,
+            "grant_type": "client_credentials",
+            "scope": "",
+        },
     )
     bearer = auth_resp.json()["access_token"]
     headers = {"Client-ID": config.APP_ID, "Authorization": f"Bearer {bearer}"}
-    subs_resp = requests.delete(
+    subs_resp = httpx.delete(
         "https://api.twitch.tv/helix/eventsub/subscriptions",
         params={"id": webhook.twitch_webhook_id},
         headers=headers,
@@ -628,70 +579,79 @@ def deactivate_webhook():
 @app.route("/panel/source/vkplay/")
 @login_required
 def vkplay_list():
-    limit = request.args.get("limit") or 0
-    offset = request.args.get("offset") or 0
-    result = db_session.query(VkPlayLive).filter(
-        VkPlayLive.author_id == current_user.id
+    limit: int = request.args.get("limit") or 100
+    offset: int = request.args.get("offset") or 0
+    query = (
+        db_session.query(VkPlayLive)
+        .filter(VkPlayLive.author_id == current_user.id)
+        .order_by(VkPlayLive.id.desc())
     )
 
     if limit:
-        result = result.limit(limit)
+        query = query.limit(limit)
     if offset:
-        result = result.offset(offset)
-    result = result.order_by(VkPlayLive.id.desc())
+        query = query.offset(offset)
+    vkplay_streams: List[VkPlayLive] = query.all()
     return render_template(
-        "panel/panel_list_vkplay.html", current_user=current_user, vkplay_streams=result
+        "panel/panel_list_streams.html",
+        current_user=current_user,
+        sources=vkplay_streams,
+        source_type="vkplay",
     )
 
 
 @app.route("/panel/source/vkplay/new/")
 @login_required
 def new_vkplay_source():
-    form = VKPlayForm()
-    form.bot.choices = get_bots_choices()
+    form = BasicStreamForm()
+    form.bot.choices = tools.get_bots_choices(current_user_id=current_user.id)
     form_action = url_for("panel.new_vkplay_source_post")
     return render_template(
-        "panel/panel_form_vkplay.html",
+        "panel/panel_form_stream.html",
         current_user=current_user,
         form=form,
         form_action=form_action,
         is_new=True,
+        source_name="VK Play Live",
     )
 
 
 @app.route("/panel/source/vkplay/new/", methods=["POST"])
 @login_required
 def new_vkplay_source_post():
-    form = VKPlayForm(request.form)
-    form.bot.choices = get_bots_choices()
-    form_action = url_for("panel.new_vkplay_source_post")
+    form: BasicStreamForm = BasicStreamForm(request.form)
+    form.bot.choices = tools.get_bots_choices(current_user_id=current_user.id)
+    form_action: str = url_for("panel.new_vkplay_source_post")
+    source_name = "VK Play Live"
 
     if not form.channel_link.data.startswith("https://vkplay.live/"):
         flash(
             "Ссылка на канал должна начинаться https://vkplay.live/}", category="danger"
         )
         return render_template(
-            "panel/panel_form_vkplay.html",
+            "panel/panel_form_stream.html",
             current_user=current_user,
             form=form,
             form_action=form_action,
             is_new=True,
+            source_name=source_name,
         )
 
     if not form.validate():
         return render_template(
-            "panel/panel_form_vkplay.html",
+            "panel/panel_form_stream.html",
             current_user=current_user,
             form=form,
             form_action=form_action,
             is_new=True,
+            source_name=source_name,
         )
 
     action_image_filename = None
     if "action_image" in request.files:
         file = request.files["action_image"]
         if file.filename != "":
-            action_image_filename = save_file(
+            action_image_filename = tools.save_file(
                 file=file, filename="vkplay_" + str(current_user.id)
             )
             if not action_image_filename:
@@ -715,11 +675,12 @@ def new_vkplay_source_post():
         flash("Запись не создана, обратитесь к администратору", category="danger")
         return (
             render_template(
-                "panel/panel_form_vkplay.html",
+                "panel/panel_form_stream.html",
                 current_user=current_user,
                 form=form,
                 form_action=form_action,
                 is_new=True,
+                source_name=source_name,
             ),
             400,
         )
@@ -738,8 +699,9 @@ def vkplay_edit(vkplay_id: int):
         flash("Стрим не найден", category="danger")
         return redirect(url_for("panel.vkplay_list"))
 
-    form = VKPlayForm()
-    form.bot.choices = get_bots_choices()
+    source_name = "VK Play Live"
+    form = BasicStreamForm()
+    form.bot.choices = tools.get_bots_choices(current_user_id=current_user.id)
     form.bot.default = vkplay.tgbot_id
     form.process()
 
@@ -750,11 +712,12 @@ def vkplay_edit(vkplay_id: int):
     form.is_active.data = vkplay.is_active
     form_action = url_for("panel.vkplay_edit_post", vkplay_id=vkplay.id)
     return render_template(
-        "panel/panel_form_vkplay.html",
+        "panel/panel_form_stream.html",
         current_user=current_user,
         form=form,
         form_action=form_action,
         source=vkplay,
+        source_name=source_name,
     )
 
 
@@ -762,29 +725,33 @@ def vkplay_edit(vkplay_id: int):
 @login_required
 def vkplay_edit_post(vkplay_id: int):
     vkplay: VkPlayLive = (
-        db_session.query(VkPlayLive).filter(VkPlayLive.id == vkplay_id).first()
+        db_session.query(VkPlayLive)
+        .filter(VkPlayLive.id == vkplay_id, VkPlayLive.author_id == current_user.id)
+        .first()
     )
     if not vkplay:
         flash("Стрим не найден", category="danger")
         return redirect(url_for("panel.vkplay_list"))
 
-    form = VKPlayForm(request.form)
-    form.bot.choices = get_bots_choices()
+    source_name = "VK Play Live"
+    form = BasicStreamForm(request.form)
+    form.bot.choices = tools.get_bots_choices(current_user_id=current_user.id)
     form_action = url_for("panel.vkplay_edit_post", vkplay_id=vkplay.id)
 
     if not form.validate():
         return render_template(
-            "panel/panel_form_vkplay.html",
+            "panel/panel_form_stream.html",
             current_user=current_user,
             form=form,
             form_action=form_action,
             source=vkplay,
+            source_name=source_name,
         )
 
     if "action_image" in request.files:
         file = request.files["action_image"]
         if file.filename != "":
-            action_image_filename = save_file(
+            action_image_filename = tools.save_file(
                 file=file, filename="vkplay_" + str(current_user.id)
             )
             if not action_image_filename:
@@ -808,13 +775,232 @@ def vkplay_edit_post(vkplay_id: int):
         flash("Запись не обновлена, обратитесь к администратору", category="danger")
         return (
             render_template(
-                "panel/panel_form_vkplay.html",
+                "panel/panel_form_stream.html",
                 current_user=current_user,
                 form=form,
                 form_action=form_action,
                 is_new=True,
+                source_name=source_name,
             ),
             400,
         )
     flash("Запись обновлена", category="success")
     return redirect(url_for("panel.vkplay_list"))
+
+
+@app.route("/panel/source/goodgame/")
+def goodgame_list():
+    limit = request.args.get("limit") or 100
+    offset = request.args.get("offset") or 0
+    query = (
+        db_session.query(GoodgameStreams)
+        .filter(GoodgameStreams.author_id == current_user.id)
+        .order_by(GoodgameStreams.id.desc())
+    )
+    if limit:
+        query = query.limit(limit)
+    if offset:
+        query = query.offset(offset)
+
+    goodgame_streams = query.all()
+
+    return render_template(
+        "panel/panel_list_streams.html",
+        sources=goodgame_streams,
+        source_name="GoodGame",
+        source_type="goodgame",
+    )
+
+
+@app.route("/panel/source/goodgame/new/")
+def new_goodgame_source():
+    form = BasicStreamForm()
+    form.bot.choices = tools.get_bots_choices(current_user_id=current_user.id)
+    form_action = url_for("panel.new_goodgame_source_post")
+    source_name = "GoodGame"
+    return render_template(
+        "panel/panel_form_stream.html",
+        form=form,
+        form_action=form_action,
+        source_name=source_name,
+        source_type="goodgame",
+        is_new=True,
+    )
+
+
+@app.route("/panel/source/goodgame/new/", methods=["POST"])
+def new_goodgame_source_post():
+    form = BasicStreamForm(request.form)
+    form.bot.choices = tools.get_bots_choices(current_user_id=current_user.id)
+    form_action = url_for("panel.new_goodgame_source_post")
+    source_name = "GoodGame"
+
+    if not form.channel_link.data.startswith("https://goodgame.ru/channel/"):
+        flash("Канал должен начинаться c https://goodgame.ru/channel/...")
+        return render_template(
+            "panel/panel_form_stream.html",
+            form=form,
+            form_action=form_action,
+            source_name=source_name,
+            source_type="goodgame",
+            is_new=True,
+        )
+
+    if not form.validate():
+        return render_template(
+            "panel/panel_form_stream.html",
+            form=form,
+            form_action=form_action,
+            source_name=source_name,
+            source_type="goodgame",
+            is_new=True,
+        )
+
+    gg = GoodgameStreams(
+        channel_name=form.channel_name.data,
+        channel_link=form.channel_link.data,
+        author_id=current_user.id,
+        tgbot_id=form.bot.data,
+        action_type="stream.online",
+        action_text=form.action_text.data,
+    )
+    try:
+        db_session.add(gg)
+        db_session.flush()
+    except Exception as e:
+        db_session.rollback()
+        flash(f"Ошибка создания записи: {e}", category="danger")
+        return render_template(
+            "panel/panel_form_stream.html",
+            form=form,
+            form_action=form_action,
+            source_name=source_name,
+            source_type="goodgame",
+            is_new=True,
+        )
+
+    if "action_image" in request.files:
+        file = request.files["action_image"]
+        if file.filename != "":
+            action_image_filename = tools.save_file(
+                file=file, filename="goodgame_" + str(current_user.id)
+            )
+            if not action_image_filename:
+                flash("Изображение не загружено", category="warning")
+            else:
+                gg.action_image = action_image_filename
+    db_session.commit()
+
+    flash("Запись успешно создана", category="success")
+    return redirect(url_for("panel.goodgame_list"))
+
+
+@app.route("/panel/source/goodgame/edit/<int:source_id>/")
+def edit_goodgame_source(source_id: int):
+    source: GoodgameStreams = (
+        db_session.query(GoodgameStreams)
+        .filter(GoodgameStreams.id == source_id)
+        .filter(GoodgameStreams.author_id == current_user.id)
+        .first()
+    )
+    if not source:
+        flash("Ресурс не найден", category="danger")
+        return redirect(url_for("panel.goodgame_list"))
+
+    form = BasicStreamForm()
+    form.bot.choices = tools.get_bots_choices(current_user_id=current_user.id)
+    form.bot.default = source.tgbot_id
+    form.process()
+
+    form.channel_name.data = source.channel_name
+    form.channel_link.data = source.channel_link
+    form.action_type.data = source.action_type
+    form.action_text.data = source.action_text
+    form.is_active.data = source.is_active
+
+    form_action = url_for("panel.edit_goodgame_source", source_id=source.id)
+    return render_template(
+        "panel/panel_form_stream.html",
+        form=form,
+        form_action=form_action,
+        source_type="goodgame",
+        source_name="GoodGame",
+        source=source,
+    )
+
+
+@app.route("/panel/source/goodgame/edit/<int:source_id>/", methods=["POST"])
+def edit_goodgame_source_post(source_id: int):
+    source: GoodgameStreams = (
+        db_session.query(GoodgameStreams)
+        .filter(GoodgameStreams.id == source_id)
+        .filter(GoodgameStreams.author_id == current_user.id)
+        .first()
+    )
+    if not source:
+        flash("Ресурс не найден", category="danger")
+        return redirect(url_for("panel.goodgame_list"))
+
+    form_action = url_for("panel.edit_goodgame_source_post", source_id=source.id)
+    form = BasicStreamForm(request.form)
+    form.bot.choices = tools.get_bots_choices(current_user_id=current_user.id)
+
+    if not form.channel_link.data.startswith("https://goodgame.ru/channel/"):
+        flash("Канал должен начинаться c https://goodgame.ru/channel/...")
+        return render_template(
+            "panel/panel_form_stream.html",
+            form=form,
+            form_action=form_action,
+            source_name="GoodGame",
+            source_type="goodgame",
+        )
+
+    if not form.validate():
+        return render_template(
+            "panel/panel_form_stream.html",
+            form=form,
+            form_action=form_action,
+            source_type="goodgame",
+            source_name="GoodGame",
+            source=source,
+        )
+
+    source.channel_name = form.channel_name.data
+    source.channel_link = form.channel_link.data
+    source.action_text = form.action_text.data
+    source.is_active = form.is_active.data
+    source.tgbot_id = form.bot.data
+
+    if "action_image" in request.files:
+        file = request.files["action_image"]
+        if file.filename != "":
+            action_image_filename = tools.save_file(
+                file=file, filename="goodgame_" + str(current_user.id)
+            )
+            if not action_image_filename:
+                flash("Изображение не загружено", category="warning")
+            else:
+                source.action_image = action_image_filename
+
+    try:
+        db_session.commit()
+    except Exception as e:
+        flash(f"Возникла проблема при обновлении: {e}", category="warning")
+        return render_template(
+            "panel/panel_form_stream.html",
+            form=form,
+            form_action=form_action,
+            source_type="goodgame",
+            source_name="GoodGame",
+            source=source,
+        )
+
+    flash("Источник успешно обновлен", category="success")
+    return render_template(
+        "panel/panel_form_stream.html",
+        form=form,
+        form_action=form_action,
+        source_type="goodgame",
+        source_name="GoodGame",
+        source=source,
+    )

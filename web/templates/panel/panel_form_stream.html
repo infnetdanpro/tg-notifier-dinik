@@ -4,7 +4,7 @@
 <div class="container-fluid">
 
     <!-- Page Heading -->
-    <h1 class="h3 mb-1 text-gray-800">{% if is_new %}Добавление источника{% else %}Редактирование источника{% endif %}: VKPlay.live</h1>
+    <h1 class="h3 mb-1 text-gray-800">{% if is_new %}Добавление источника{% else %}Редактирование источника{% endif %}: {{ source_name }}</h1>
     <div class="card-body p-0">
         <!-- Nested Row within Card Body -->
         <div class="row">
@@ -12,7 +12,7 @@
                 <div class="p-5">
                    <form method="POST" action="{{ form_action }}" enctype="multipart/form-data">
                     <div class="mb-3">
-                        <label for="controlChannelName">Название канала</label>
+                        <label for="controlChannelName">Имя канала (не должно содержать спецсимволов)</label>
                         {{ form.channel_name }}
                     </div>
                     <div class="mb-3">

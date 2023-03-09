@@ -11,13 +11,9 @@ from sqlalchemy import text
 
 from config import config
 from db.pg import db_session
+from web.worker import tools
 
 logger = logging.getLogger(__name__)
-
-
-def partition(l, n):
-    for i in range(0, len(l), n):
-        yield l[i : i + n]
 
 
 async def is_stream_is_live(stream_username: str) -> bool:
@@ -148,7 +144,7 @@ def main():
             channel_stream_name = channel_link.split(".")[1].split("/")[1]
             data.append((channel_stream_name, is_live_now))
 
-        for streams in partition(data, 100):
+        for streams in tools.partition(data, 100):
             process = spawn.Process(target=worker, kwargs={"channels": streams})
             process.daemon = True
             process.start()
