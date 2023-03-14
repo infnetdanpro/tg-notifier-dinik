@@ -60,38 +60,45 @@ def main():
                     open(file_to_send, "rb"),
                 )
 
+            is_sent = False
             for channel_id in channels:
                 if action_image:
-                    resp = requests.post(
-                        f"https://api.telegram.org/bot{tg_key}/sendPhoto",
-                        params={
-                            "chat_id": channel_id,
-                            "caption": text,
-                            "parse_mode": "html",
-                        },
-                        files=payload,
-                    )
+                    try:
+                        resp = requests.post(
+                            f"https://api.telegram.org/bot{tg_key}/sendPhoto",
+                            params={
+                                "chat_id": channel_id,
+                                "caption": text,
+                                "parse_mode": "html",
+                            },
+                            files=payload,
+                        )
+                        is_sent = resp.status_code == 200
+                    except Exception as e:
+                        logger.exception(e)
                 else:
                     payload["chat_id"] = channel_id
-                    resp = requests.post(
-                        f"https://api.telegram.org/bot{tg_key}/sendMessage",
-                        json=payload,
-                    )
+                    try:
+                        resp = requests.post(
+                            f"https://api.telegram.org/bot{tg_key}/sendMessage",
+                            json=payload,
+                        )
+                        is_sent = resp.status_code == 200
+                    except Exception as e:
+                        logger.exception(e)
                 if not resp.status_code == 200:
-                    import pdb
-
-                    pdb.set_trace()
                     logger.exception(
                         "Кажется нас забанили или недоступен ТГ-сервер для бота: %s. Ответ: %s",
                         resp.status_code,
                         resp.text,
                     )
                     continue
+            if is_sent:
                 try:
                     db_session.execute(
                         text_(
                             """
-                        UPDATE vkplay_live_notifications SET is_sent = TRUE WHERE id = :id
+                        UPDATE goodgame_notifications SET is_sent = TRUE WHERE id = :id
                     """
                         ),
                         params={"id": notification_id},

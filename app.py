@@ -28,7 +28,11 @@ def create_app() -> "Flask":
     @login_manager.user_loader
     def load_user(user_id):
         # since the user_id is just the primary key of our user table, use it in the query for the user
-        return db_session.query(Users).get(user_id)
+        return (
+            db_session.query(Users)
+            .filter(Users.is_active.is_(True), Users.id == user_id)
+            .first()
+        )
 
     return flask_app
 

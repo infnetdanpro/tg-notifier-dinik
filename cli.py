@@ -38,6 +38,13 @@ def goodgame():
     main()
 
 
+@worker.command()
+def goodgame_send_notifications():
+    from web.worker.goodgame_notifications import main
+
+    main()
+
+
 entire_group.add_command(worker)
 
 
