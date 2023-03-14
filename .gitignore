@@ -7,3 +7,4 @@ __pycache__/
 user_uploads
 user_uploads/
 .env
+*.log
